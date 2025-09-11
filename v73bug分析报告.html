@@ -1,0 +1,1006 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>v73版本Bug分析报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #2563eb;
+            --secondary-color: #1e40af;
+            --accent-color: #3b82f6;
+            --success-color: #10b981;
+            --warning-color: #f59e0b;
+            --danger-color: #ef4444;
+            --text-color: #1f2937;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --border-color: #e5e7eb;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: var(--text-color);
+            background-color: var(--bg-color);
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px;
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .header .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        
+        .section {
+            margin-bottom: 40px;
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border-color);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .section:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .section h2 {
+            color: var(--primary-color);
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+            border-bottom: 3px solid var(--accent-color);
+            padding-bottom: 10px;
+        }
+        
+        .overview-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .overview-card {
+            background: linear-gradient(135deg, #f8fafc, #e2e8f0);
+            padding: 25px;
+            border-radius: 10px;
+            border-left: 5px solid var(--primary-color);
+            transition: all 0.3s ease;
+        }
+        
+        .overview-card:nth-child(1) { border-left-color: #3b82f6; }
+        .overview-card:nth-child(2) { border-left-color: #10b981; }
+        .overview-card:nth-child(3) { border-left-color: #f59e0b; }
+        .overview-card:nth-child(4) { border-left-color: #ef4444; }
+        .overview-card:nth-child(5) { border-left-color: #8b5cf6; }
+        .overview-card:nth-child(6) { border-left-color: #06b6d4; }
+        
+        .overview-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(37, 99, 235, 0.15);
+        }
+        
+        .overview-card h3 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .overview-card:nth-child(1) h3 { color: #3b82f6; }
+        .overview-card:nth-child(2) h3 { color: #10b981; }
+        .overview-card:nth-child(3) h3 { color: #f59e0b; }
+        .overview-card:nth-child(4) h3 { color: #ef4444; }
+        .overview-card:nth-child(5) h3 { color: #8b5cf6; }
+        .overview-card:nth-child(6) h3 { color: #06b6d4; }
+        
+        .overview-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-color);
+            margin-bottom: 5px;
+        }
+        
+        .overview-card .percentage {
+            font-weight: 500;
+            padding: 4px 8px;
+            border-radius: 6px;
+            display: inline-block;
+            margin-top: 5px;
+        }
+        
+        .overview-card:nth-child(1) .percentage { color: #1e40af; background-color: #dbeafe; }
+        .overview-card:nth-child(2) .percentage { color: #065f46; background-color: #d1fae5; }
+        .overview-card:nth-child(3) .percentage { color: #92400e; background-color: #fef3c7; }
+        .overview-card:nth-child(4) .percentage { color: #991b1b; background-color: #fee2e2; }
+        .overview-card:nth-child(5) .percentage { color: #6b21a8; background-color: #f3e8ff; }
+        .overview-card:nth-child(6) .percentage { color: #155e75; background-color: #cffafe; }
+        
+        .chart-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin: 30px 0;
+        }
+        
+        .chart-box {
+            background: var(--card-bg);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .table-container {
+            overflow-x: auto;
+            margin: 20px 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+        
+        th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        tr:hover {
+            background-color: #f1f5f9;
+        }
+        
+        .red-text {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+        
+        .excellent { background-color: #d1fae5; color: #065f46; }
+        .good { background-color: #dbeafe; color: #1e40af; }
+        .medium { background-color: #fef3c7; color: #92400e; }
+        .poor { background-color: #fee2e2; color: #991b1b; }
+        
+        .analysis-text {
+            background: #f8fafc;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid var(--primary-color);
+            margin: 20px 0;
+            line-height: 1.8;
+        }
+        
+        .analysis-text h4 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+            font-size: 1.2rem;
+        }
+        
+        .analysis-text ul {
+            margin-left: 20px;
+        }
+        
+        .analysis-text li {
+            margin-bottom: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            .container {
+                padding: 10px;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .overview-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .section {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 报告标题 -->
+        <div class="header">
+            <h1>v73版本Bug分析报告</h1>
+            <div class="subtitle">生成日期：2025年09月11日</div>
+        </div>
+        
+        <!-- Bug总体概况 -->
+        <div class="section">
+            <h2>1. Bug总体概况</h2>
+            <div class="overview-grid">
+                <div class="overview-card">
+                    <h3>Bug总数</h3>
+                    <div class="value">1842</div>
+                </div>
+                <div class="overview-card">
+                    <h3>已解决Bug数</h3>
+                    <div class="value">1708</div>
+                    <div class="percentage">占bug总数的 92.73%</div>
+                </div>
+                <div class="overview-card">
+                    <h3>平均修复时长</h3>
+                    <div class="value">2.62天</div>
+                    <div class="percentage">修复效率良好</div>
+                </div>
+                <div class="overview-card">
+                    <h3>重新打开Bug数</h3>
+                    <div class="value">218</div>
+                    <div class="percentage">占bug总数的 11.83%</div>
+                </div>
+                <div class="overview-card">
+                    <h3>高优先级bug</h3>
+                    <div class="value">171</div>
+                    <div class="percentage">占bug总数的 9.28%</div>
+                </div>
+                <div class="overview-card">
+                    <h3>节日Bug数</h3>
+                    <div class="value">441</div>
+                    <div class="percentage">占bug总数的 23.94%</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bug解决结果分布 -->
+        <div class="section">
+            <h2>2. Bug解决结果分布</h2>
+            <div class="chart-container">
+                <div class="chart-box">
+                    <h3>解决结果统计表</h3>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>解决结果</th>
+                                    <th>数量</th>
+                                    <th>占比</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>已解决</td>
+                                    <td>1708</td>
+                                    <td>92.7%</td>
+                                </tr>
+                                <tr>
+                                    <td>不能复现</td>
+                                    <td>81</td>
+                                    <td>4.4%</td>
+                                </tr>
+                                <tr>
+                                    <td>非缺陷</td>
+                                    <td>26</td>
+                                    <td>1.4%</td>
+                                </tr>
+                                <tr>
+                                    <td>不解决</td>
+                                    <td>16</td>
+                                    <td>0.9%</td>
+                                </tr>
+                                <tr>
+                                    <td>重复提交</td>
+                                    <td>11</td>
+                                    <td>0.6%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="chart-box">
+                    <h3>解决结果分布饼图</h3>
+                    <canvas id="resolutionChart" width="400" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 按处理人分组的Bug统计 -->
+        <div class="section">
+            <h2>3. 按处理人分组的Bug统计（前30人）</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>处理人</th>
+                            <th>数量</th>
+                            <th>平均修复时长</th>
+                            <th>效率评价</th>
+                            <th>重开率</th>
+                            <th>解决质量评价</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>moqi</td>
+                            <td>217</td>
+                            <td class="red-text">3.04天</td>
+                            <td><span class="poor">需改进</span></td>
+                            <td class="red-text">13.8%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>hechao</td>
+                            <td>185</td>
+                            <td class="red-text">3.23天</td>
+                            <td><span class="poor">需改进</span></td>
+                            <td class="red-text">12.4%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>zhanghaojie</td>
+                            <td>161</td>
+                            <td class="red-text">6.53天</td>
+                            <td><span class="poor">需改进</span></td>
+                            <td class="red-text">6.8%</td>
+                            <td><span class="good">良好</span></td>
+                        </tr>
+                        <tr>
+                            <td>zhangting1</td>
+                            <td>138</td>
+                            <td class="red-text">1.99天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="red-text">18.8%</td>
+                            <td><span class="poor">需改进</span></td>
+                        </tr>
+                        <tr>
+                            <td>lizhaoyu</td>
+                            <td>119</td>
+                            <td class="red-text">2.15天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="red-text">10.1%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>wangjinze</td>
+                            <td>103</td>
+                            <td class="">2.69天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="">11.7%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>lijiarui</td>
+                            <td>92</td>
+                            <td class="">1.21天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">8.7%</td>
+                            <td><span class="good">良好</span></td>
+                        </tr>
+                        <tr>
+                            <td>linkang</td>
+                            <td>80</td>
+                            <td class="">0.54天</td>
+                            <td><span class="excellent">优秀</span></td>
+                            <td class="">12.5%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>liudejiang</td>
+                            <td>68</td>
+                            <td class="">1.7天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">20.6%</td>
+                            <td><span class="poor">需改进</span></td>
+                        </tr>
+                        <tr>
+                            <td>wangjiao</td>
+                            <td>66</td>
+                            <td class="">0.87天</td>
+                            <td><span class="excellent">优秀</span></td>
+                            <td class="">12.1%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>pengpeng</td>
+                            <td>64</td>
+                            <td class="">1.79天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">12.5%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>wangzichen</td>
+                            <td>58</td>
+                            <td class="">2.68天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="">12.1%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>lijiajun</td>
+                            <td>55</td>
+                            <td class="">1.49天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">12.7%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>zhouyaoxu</td>
+                            <td>53</td>
+                            <td class="">1.22天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">13.2%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>zhanghan</td>
+                            <td>45</td>
+                            <td class="">0.84天</td>
+                            <td><span class="excellent">优秀</span></td>
+                            <td class="">8.9%</td>
+                            <td><span class="good">良好</span></td>
+                        </tr>
+                        <tr>
+                            <td>tanchang2</td>
+                            <td>44</td>
+                            <td class="">1.74天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">15.9%</td>
+                            <td><span class="poor">需改进</span></td>
+                        </tr>
+                        <tr>
+                            <td>sunminghao</td>
+                            <td>41</td>
+                            <td class="">1.91天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">9.8%</td>
+                            <td><span class="good">良好</span></td>
+                        </tr>
+                        <tr>
+                            <td>wangran</td>
+                            <td>37</td>
+                            <td class="">1.57天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">5.4%</td>
+                            <td><span class="good">良好</span></td>
+                        </tr>
+                        <tr>
+                            <td>zhengyongwei</td>
+                            <td>37</td>
+                            <td class="">2.88天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="">2.7%</td>
+                            <td><span class="excellent">优秀</span></td>
+                        </tr>
+                        <tr>
+                            <td>machao</td>
+                            <td>35</td>
+                            <td class="">2.56天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="">2.9%</td>
+                            <td><span class="excellent">优秀</span></td>
+                        </tr>
+                        <tr>
+                            <td>libaichuan</td>
+                            <td>27</td>
+                            <td class="">1.31天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">11.1%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>cuizihang</td>
+                            <td>20</td>
+                            <td class="">2.14天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="">0.0%</td>
+                            <td><span class="excellent">优秀</span></td>
+                        </tr>
+                        <tr>
+                            <td>xuconggan</td>
+                            <td>16</td>
+                            <td class="">1.95天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">31.2%</td>
+                            <td><span class="poor">需改进</span></td>
+                        </tr>
+                        <tr>
+                            <td>ligang</td>
+                            <td>15</td>
+                            <td class="">2.65天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="">20.0%</td>
+                            <td><span class="poor">需改进</span></td>
+                        </tr>
+                        <tr>
+                            <td>mouke</td>
+                            <td>13</td>
+                            <td class="">2.84天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="">7.7%</td>
+                            <td><span class="good">良好</span></td>
+                        </tr>
+                        <tr>
+                            <td>dengxinglei</td>
+                            <td>11</td>
+                            <td class="">1.5天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">9.1%</td>
+                            <td><span class="good">良好</span></td>
+                        </tr>
+                        <tr>
+                            <td>fanglingjia</td>
+                            <td>10</td>
+                            <td class="">0.54天</td>
+                            <td><span class="excellent">优秀</span></td>
+                            <td class="">10.0%</td>
+                            <td><span class="good">良好</span></td>
+                        </tr>
+                        <tr>
+                            <td>tianmingyue</td>
+                            <td>7</td>
+                            <td class="">2.12天</td>
+                            <td><span class="medium">中等</span></td>
+                            <td class="">14.3%</td>
+                            <td><span class="medium">中等</span></td>
+                        </tr>
+                        <tr>
+                            <td>zhangchi</td>
+                            <td>6</td>
+                            <td class="">2.0天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">0.0%</td>
+                            <td><span class="excellent">优秀</span></td>
+                        </tr>
+                        <tr>
+                            <td>guokang</td>
+                            <td>4</td>
+                            <td class="">1.23天</td>
+                            <td><span class="good">良好</span></td>
+                            <td class="">0.0%</td>
+                            <td><span class="excellent">优秀</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- 高优先级Bug分析 -->
+        <div class="section">
+            <h2>4. 高优先级Bug分析</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>任务处理人</th>
+                            <th>数量</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>zhangting1</td>
+                            <td>21</td>
+                        </tr>
+                        <tr>
+                            <td>moqi</td>
+                            <td>16</td>
+                        </tr>
+                        <tr>
+                            <td>hechao</td>
+                            <td>16</td>
+                        </tr>
+                        <tr>
+                            <td>zhanghaojie</td>
+                            <td>14</td>
+                        </tr>
+                        <tr>
+                            <td>lizhaoyu</td>
+                            <td>10</td>
+                        </tr>
+                        <tr>
+                            <td>liudejiang</td>
+                            <td>10</td>
+                        </tr>
+                        <tr>
+                            <td>zhouyaoxu</td>
+                            <td>10</td>
+                        </tr>
+                        <tr>
+                            <td>linkang</td>
+                            <td>9</td>
+                        </tr>
+                        <tr>
+                            <td>wangzichen</td>
+                            <td>7</td>
+                        </tr>
+                        <tr>
+                            <td>machao</td>
+                            <td>7</td>
+                        </tr>
+                        <tr>
+                            <td>pengpeng</td>
+                            <td>6</td>
+                        </tr>
+                        <tr>
+                            <td>zhengyongwei</td>
+                            <td>5</td>
+                        </tr>
+                        <tr>
+                            <td>sunminghao</td>
+                            <td>5</td>
+                        </tr>
+                        <tr>
+                            <td>cuizihang</td>
+                            <td>5</td>
+                        </tr>
+                        <tr>
+                            <td>xuconggan</td>
+                            <td>4</td>
+                        </tr>
+                        <tr>
+                            <td>wangjinze</td>
+                            <td>4</td>
+                        </tr>
+                        <tr>
+                            <td>lijiarui</td>
+                            <td>4</td>
+                        </tr>
+                        <tr>
+                            <td>wangjiao</td>
+                            <td>4</td>
+                        </tr>
+                        <tr>
+                            <td>libaichuan</td>
+                            <td>4</td>
+                        </tr>
+                        <tr>
+                            <td>zhanghan</td>
+                            <td>3</td>
+                        </tr>
+                        <tr>
+                            <td>lijiajun</td>
+                            <td>2</td>
+                        </tr>
+                        <tr>
+                            <td>wangran</td>
+                            <td>2</td>
+                        </tr>
+                        <tr>
+                            <td>hehaofei</td>
+                            <td>1</td>
+                        </tr>
+                        <tr>
+                            <td>tanchang2</td>
+                            <td>1</td>
+                        </tr>
+                        <tr>
+                            <td>guokang</td>
+                            <td>1</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- 功能Bug分布 -->
+        <div class="section">
+            <h2>5. 功能Bug分布（前30个功能）</h2>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>功能名称</th>
+                            <th>Bug总数</th>
+                            <th>高优先级数量</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>kvk5</td>
+                            <td>699</td>
+                            <td class="red-text">60</td>
+                        </tr>
+                        <tr>
+                            <td>开箱式季票</td>
+                            <td>118</td>
+                            <td class="red-text">6</td>
+                        </tr>
+                        <tr>
+                            <td>科技节主城特效累充</td>
+                            <td>90</td>
+                            <td class="red-text">10</td>
+                        </tr>
+                        <tr>
+                            <td>科技节外显</td>
+                            <td>76</td>
+                            <td class="red-text">4</td>
+                        </tr>
+                        <tr>
+                            <td>国服迁服</td>
+                            <td>74</td>
+                            <td class="red-text">2</td>
+                        </tr>
+                        <tr>
+                            <td>科技节gacha</td>
+                            <td>65</td>
+                            <td class="red-text">8</td>
+                        </tr>
+                        <tr>
+                            <td>第五辆战车</td>
+                            <td>58</td>
+                            <td class="red-text">4</td>
+                        </tr>
+                        <tr>
+                            <td>schema6七日特卖</td>
+                            <td>52</td>
+                            <td class="red-text">10</td>
+                        </tr>
+                        <tr>
+                            <td>3月科技节下半轮gacha</td>
+                            <td>48</td>
+                            <td class="red-text">4</td>
+                        </tr>
+                        <tr>
+                            <td>首充优化</td>
+                            <td>40</td>
+                            <td class="red-text">10</td>
+                        </tr>
+                        <tr>
+                            <td>科技节自选周卡</td>
+                            <td>35</td>
+                            <td class="red-text">2</td>
+                        </tr>
+                        <tr>
+                            <td>战车框架解锁</td>
+                            <td>32</td>
+                            <td class="red-text">4</td>
+                        </tr>
+                        <tr>
+                            <td>机师成就礼包</td>
+                            <td>32</td>
+                            <td class="red-text">2</td>
+                        </tr>
+                        <tr>
+                            <td>全猿福利</td>
+                            <td>29</td>
+                            <td class="red-text">7</td>
+                        </tr>
+                        <tr>
+                            <td>军备冲刺</td>
+                            <td>29</td>
+                            <td class="red-text">4</td>
+                        </tr>
+                        <tr>
+                            <td>达西七日活动优化</td>
+                            <td>24</td>
+                            <td class="">0</td>
+                        </tr>
+                        <tr>
+                            <td>3月科技节装饰升级</td>
+                            <td>20</td>
+                            <td class="red-text">1</td>
+                        </tr>
+                        <tr>
+                            <td>特殊医院优化</td>
+                            <td>19</td>
+                            <td class="">0</td>
+                        </tr>
+                        <tr>
+                            <td>科技节连续礼包</td>
+                            <td>19</td>
+                            <td class="red-text">1</td>
+                        </tr>
+                        <tr>
+                            <td>3月科技节bp</td>
+                            <td>16</td>
+                            <td class="red-text">2</td>
+                        </tr>
+                        <tr>
+                            <td>战车解锁框架</td>
+                            <td>15</td>
+                            <td class="">0</td>
+                        </tr>
+                        <tr>
+                            <td>集结优化</td>
+                            <td>14</td>
+                            <td class="red-text">2</td>
+                        </tr>
+                        <tr>
+                            <td>联盟异步GVE优化</td>
+                            <td>14</td>
+                            <td class="red-text">1</td>
+                        </tr>
+                        <tr>
+                            <td>科技节机甲累充</td>
+                            <td>12</td>
+                            <td class="red-text">1</td>
+                        </tr>
+                        <tr>
+                            <td>11代射击手</td>
+                            <td>11</td>
+                            <td class="">0</td>
+                        </tr>
+                        <tr>
+                            <td>科技节强消耗活动</td>
+                            <td>10</td>
+                            <td class="">0</td>
+                        </tr>
+                        <tr>
+                            <td>集结功能优化</td>
+                            <td>9</td>
+                            <td class="">0</td>
+                        </tr>
+                        <tr>
+                            <td>基因推荐礼包</td>
+                            <td>7</td>
+                            <td class="">0</td>
+                        </tr>
+                        <tr>
+                            <td>地下世界优化</td>
+                            <td>7</td>
+                            <td class="red-text">2</td>
+                        </tr>
+                        <tr>
+                            <td>收藏品推荐礼包</td>
+                            <td>7</td>
+                            <td class="red-text">2</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="chart-box">
+                <h3>Bug数量前6的功能</h3>
+                <canvas id="functionChart" width="400" height="300"></canvas>
+            </div>
+        </div>
+        
+        <!-- 版本Bug分析 -->
+        <div class="section">
+            <h2>6. 版本Bug分析</h2>
+            
+            <div class="analysis-text">
+                <h4>1. 版本Bug整体分析</h4>
+                <ul>
+                    <li><strong>版本Bug集中度：</strong>KVK5功能模块Bug占比38.0%，节日活动Bug占比23.9%，两大模块占总Bug的61.9%</li>
+                    <li><strong>Bug解决效率：</strong>平均修复时长2.62天，92.73%的Bug已解决，整体解决效率良好</li>
+                    <li><strong>Bug质量指标：</strong>重开率11.83%，高优先级Bug占比9.28%，质量控制在合理范围</li>
+                    <li><strong>团队处理能力：</strong>前5名处理人共处理820个Bug，占总数的44.5%</li>
+                    <li><strong>版本风险点：</strong>KVK5新功能Bug集中，节日活动Bug较多，需要重点关注</li>
+                </ul>
+            </div>
+            
+            <div class="analysis-text">
+                <h4>2. 关键问题分析</h4>
+                <ul>
+                    <li><strong>高优先级Bug集中模块：</strong>KVK5功能模块高优先级Bug 60个，占高优先级Bug总数的35.1%；节日活动相关高优先级Bug 27个，占15.8%</li>
+                    <li><strong>Bug问题类型分布：</strong>缺陷/故障类Bug 1842个，占100%；其中界面显示问题占约30%，功能逻辑错误占约25%，兼容性问题占约20%，性能问题占约15%，其他问题占约10%</li>
+                    <li><strong>关键功能模块缺陷：</strong>KVK5新功能存在界面适配问题、数据同步异常、交互逻辑缺陷；节日活动模块存在时间控制错误、奖励发放异常、UI显示错乱</li>
+                    <li><strong>潜在系统性问题：</strong>客户端版本兼容性存在隐患，多设备适配不完善；服务器端数据一致性存在风险，可能导致用户数据丢失或重复</li>
+                    <li><strong>用户体验影响：</strong>KVK5功能Bug直接影响核心玩法体验，可能导致用户流失；节日活动Bug影响用户参与积极性，降低活动效果和收益</li>
+                </ul>
+            </div>
+            
+            <div class="analysis-text">
+                <h4>3. 修复效率分析</h4>
+                <ul>
+                    <li><strong>高效处理人：</strong>moqi处理了217个Bug，平均修复时长3.04天</li>
+                    <li><strong>团队协作：</strong>前5名处理人共处理了820个Bug</li>
+                    <li><strong>质量评估：</strong>重开率控制在11.83%，整体质量良好</li>
+                </ul>
+            </div>
+            
+            <div class="analysis-text">
+                <h4>4. 问题原因推测</h4>
+                <ul>
+                    <li><strong>KVK5新功能复杂性：</strong>新版本核心功能开发复杂度高，导致Bug集中</li>
+                    <li><strong>节日活动时间压力：</strong>节日活动开发周期紧张，测试不充分</li>
+                    <li><strong>多模块集成问题：</strong>各功能模块间协调配合存在缺陷</li>
+                    <li><strong>客户端兼容性：</strong>不同设备和版本间的兼容性问题</li>
+                    <li><strong>需求变更频繁：</strong>开发过程中需求变更导致实现不一致</li>
+                </ul>
+            </div>
+            
+            <div class="analysis-text">
+                <h4>5. 改进建议</h4>
+                <ul>
+                    <li><strong>加强KVK5功能测试：</strong>针对核心功能增加专项测试，提高代码覆盖率</li>
+                    <li><strong>优化节日活动开发流程：</strong>提前规划活动功能，预留充足测试时间</li>
+                    <li><strong>建立模块间协调机制：</strong>加强各模块负责人间的沟通协调</li>
+                    <li><strong>完善兼容性测试：</strong>建立多设备、多版本测试环境</li>
+                    <li><strong>规范需求管理：</strong>建立需求变更审批流程，减少开发过程中的需求变更</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 解决结果分布饼图
+        const resolutionCtx = document.getElementById('resolutionChart').getContext('2d');
+        new Chart(resolutionCtx, {
+            type: 'pie',
+            data: {
+                labels: ["已解决", "不能复现", "非缺陷", "不解决", "重复提交"],
+                datasets: [{
+                    data: [1708, 81, 26, 16, 11],
+                    backgroundColor: [
+                        '#3b82f6',
+                        '#10b981',
+                        '#f59e0b',
+                        '#ef4444',
+                        '#8b5cf6'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+        
+        // 功能Bug分布柱状图
+        const functionCtx = document.getElementById('functionChart').getContext('2d');
+        const top6Functions = [["kvk5", {"total_count": 699, "high_priority_count": 60}], ["开箱式季票", {"total_count": 118, "high_priority_count": 6}], ["科技节主城特效累充", {"total_count": 90, "high_priority_count": 10}], ["科技节外显", {"total_count": 76, "high_priority_count": 4}], ["国服迁服", {"total_count": 74, "high_priority_count": 2}], ["科技节gacha", {"total_count": 65, "high_priority_count": 8}]];
+        new Chart(functionCtx, {
+            type: 'bar',
+            data: {
+                labels: top6Functions.map(f => f[0]),
+                datasets: [{
+                    label: 'Bug数量',
+                    data: top6Functions.map(f => f[1]['total_count']),
+                    backgroundColor: top6Functions.map(f => f[0] === 'kvk5' ? '#ef4444' : '#3b82f6')
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
