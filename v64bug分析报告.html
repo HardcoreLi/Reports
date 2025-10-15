@@ -1,0 +1,1116 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V64 Bug分析报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --success-color: #27ae60;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --light-bg: #ecf0f1;
+            --card-bg: #ffffff;
+            --text-color: #2c3e50;
+            --border-color: #bdc3c7;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background-color: var(--light-bg);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: var(--card-bg);
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        
+        .stat-card h3 {
+            color: var(--primary-color);
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        
+        .stat-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: var(--secondary-color);
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        .section {
+            background: var(--card-bg);
+            margin-bottom: 30px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .section-header {
+            background: var(--primary-color);
+            color: white;
+            padding: 20px;
+            font-size: 1.5em;
+            font-weight: bold;
+        }
+        
+        .section-content {
+            padding: 25px;
+        }
+        
+        .chart-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: center;
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        th {
+            background-color: var(--light-bg);
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .analysis-section {
+            background: var(--card-bg);
+            margin-bottom: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .analysis-header {
+            background: var(--secondary-color);
+            color: white;
+            padding: 15px 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        
+        .analysis-content {
+            padding: 20px;
+        }
+        
+        .analysis-content ul {
+            margin-left: 20px;
+        }
+        
+        .analysis-content li {
+            margin-bottom: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            .chart-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>V64 Bug分析报告</h1>
+            <p>版本号: V64 | 生成日期: 2025年10月15日</p>
+        </div>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Bug总数</h3>
+                <div class="stat-value">1103</div>
+                <div class="stat-label">所有bug的总和数量</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>已解决Bug数</h3>
+                <div class="stat-value">1035</div>
+                <div class="stat-label">占bug总数的 93.8%</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>重新打开Bug数</h3>
+                <div class="stat-value">160</div>
+                <div class="stat-label">占bug总数的 14.5%</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>高优先级bug</h3>
+                <div class="stat-value">103</div>
+                <div class="stat-label">占bug总数的 9.3%</div>
+            </div>
+            
+            <div class="stat-card">
+                <h3>节日Bug数</h3>
+                <div class="stat-value">51</div>
+                <div class="stat-label">占bug总数的 4.6%</div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-header">Bug解决结果分布</div>
+            <div class="section-content">
+                <div class="chart-container">
+                    <div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>解决结果</th>
+                                    <th>数量</th>
+                                    <th>百分比</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                
+        <tr>
+            <td>已解决</td>
+            <td>1035</td>
+            <td>93.8%</td>
+        </tr>
+        
+        <tr>
+            <td>不能复现</td>
+            <td>30</td>
+            <td>2.7%</td>
+        </tr>
+        
+        <tr>
+            <td>非缺陷</td>
+            <td>18</td>
+            <td>1.6%</td>
+        </tr>
+        
+        <tr>
+            <td>重复提交</td>
+            <td>10</td>
+            <td>0.9%</td>
+        </tr>
+        
+        <tr>
+            <td>不解决</td>
+            <td>9</td>
+            <td>0.8%</td>
+        </tr>
+        
+        <tr>
+            <td>下个版本解决</td>
+            <td>1</td>
+            <td>0.1%</td>
+        </tr>
+        
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="resolutionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-header">按处理人分组的Bug统计（前30人）</div>
+            <div class="section-content">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>处理人</th>
+                            <th>数量</th>
+                            <th>平均修复时长</th>
+                            <th>效率评价</th>
+                            <th>重开率</th>
+                            <th>解决质量评价</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+        <tr>
+            <td>wuchangxin</td>
+            <td>100</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td style="color: red;">12.0%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>yangyuxuan</td>
+            <td>98</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td style="color: red;">14.3%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>chenmengwei</td>
+            <td>65</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td style="color: red;">13.8%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>moqi</td>
+            <td>65</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td style="color: red;">26.2%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>wangjinze</td>
+            <td>65</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td style="color: red;">7.7%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>zhangtingting1</td>
+            <td>53</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >7.5%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>zhouyaoxu</td>
+            <td>50</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >12.0%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>hechao</td>
+            <td>47</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >17.0%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>zhangzhichun</td>
+            <td>47</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >6.4%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>pengpeng</td>
+            <td>46</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >6.5%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>liudejiang</td>
+            <td>37</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >13.5%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>chenchi</td>
+            <td>34</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >11.8%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>lizhaoyu</td>
+            <td>33</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >12.1%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>mouke</td>
+            <td>29</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >17.2%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>lijinzhou</td>
+            <td>27</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >22.2%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>jianghualiang</td>
+            <td>25</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >28.0%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>zhanghan</td>
+            <td>25</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >16.0%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>lijiajun</td>
+            <td>22</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >9.1%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>xianpeiwen</td>
+            <td>21</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >9.5%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>ligang</td>
+            <td>20</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >25.0%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>zhanghaojie</td>
+            <td>19</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >10.5%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>gongrui</td>
+            <td>18</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >16.7%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>wangziqiang</td>
+            <td>17</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >11.8%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>wangjiao</td>
+            <td>15</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >26.7%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>zhangchi</td>
+            <td>15</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >13.3%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>zhangdianda</td>
+            <td>14</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >7.1%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>sunminghao</td>
+            <td>13</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >7.7%</td>
+            <td style="background-color: #fff3cd;">中等</td>
+        </tr>
+        
+        <tr>
+            <td>daixiuhan</td>
+            <td>12</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >25.0%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>guoyuehe</td>
+            <td>11</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >27.3%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+        <tr>
+            <td>anda</td>
+            <td>9</td>
+            <td >0.00</td>
+            <td style="background-color: #d4edda;">优秀</td>
+            <td >44.4%</td>
+            <td style="background-color: #f8d7da;">需改进</td>
+        </tr>
+        
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-header">高优先级Bug分析</div>
+            <div class="section-content">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>任务处理人</th>
+                            <th>数量</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+        <tr>
+            <td>wuchangxin</td>
+            <td>15</td>
+        </tr>
+        
+        <tr>
+            <td>yangyuxuan</td>
+            <td>12</td>
+        </tr>
+        
+        <tr>
+            <td>zhouyaoxu</td>
+            <td>12</td>
+        </tr>
+        
+        <tr>
+            <td>wangjinze</td>
+            <td>11</td>
+        </tr>
+        
+        <tr>
+            <td>liudejiang</td>
+            <td>7</td>
+        </tr>
+        
+        <tr>
+            <td>hechao</td>
+            <td>6</td>
+        </tr>
+        
+        <tr>
+            <td>pengpeng</td>
+            <td>6</td>
+        </tr>
+        
+        <tr>
+            <td>wangjiao</td>
+            <td>5</td>
+        </tr>
+        
+        <tr>
+            <td>lijinzhou</td>
+            <td>4</td>
+        </tr>
+        
+        <tr>
+            <td>mouke</td>
+            <td>4</td>
+        </tr>
+        
+        <tr>
+            <td>chenmengwei</td>
+            <td>3</td>
+        </tr>
+        
+        <tr>
+            <td>lizhaoyu</td>
+            <td>3</td>
+        </tr>
+        
+        <tr>
+            <td>moqi</td>
+            <td>2</td>
+        </tr>
+        
+        <tr>
+            <td>zhangtingting1</td>
+            <td>2</td>
+        </tr>
+        
+        <tr>
+            <td>zhangzhichun</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>cuizihang</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>wangziqiang</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>zhangdianda</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>chenchi</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>sunminghao</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>daixiuhan</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>jianghualiang</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>ligang</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>zhanghaojie</td>
+            <td>1</td>
+        </tr>
+        
+        <tr>
+            <td>wangran</td>
+            <td>1</td>
+        </tr>
+        
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <div class="section">
+            <div class="section-header">功能Bug分布（前30个功能）</div>
+            <div class="section-content">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>功能</th>
+                            <th>Bug数量</th>
+                            <th>高优先级数量</th>
+                            <th>高优先级占比</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        
+        <tr>
+            <td>射击卡牌验证</td>
+            <td>177</td>
+            <td style="color: red;">13</td>
+            <td style="color: red;">7.3%</td>
+        </tr>
+        
+        <tr>
+            <td>ac练习赛</td>
+            <td>114</td>
+            <td style="color: red;">30</td>
+            <td style="color: red;">26.3%</td>
+        </tr>
+        
+        <tr>
+            <td>连塔验证关卡</td>
+            <td>86</td>
+            <td style="color: red;">15</td>
+            <td style="color: red;">17.4%</td>
+        </tr>
+        
+        <tr>
+            <td>第二战车</td>
+            <td>64</td>
+            <td style="color: red;">12</td>
+            <td style="color: red;">18.8%</td>
+        </tr>
+        
+        <tr>
+            <td>斗士远征</td>
+            <td>59</td>
+            <td style="color: red;">1</td>
+            <td style="color: red;">1.7%</td>
+        </tr>
+        
+        <tr>
+            <td>行军表情系统</td>
+            <td>43</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>收藏品礼包优化</td>
+            <td>35</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>回归活动裂变</td>
+            <td>33</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>机甲邮件</td>
+            <td>32</td>
+            <td style="color: red;">4</td>
+            <td style="color: red;">12.5%</td>
+        </tr>
+        
+        <tr>
+            <td>机甲耐久等级</td>
+            <td>31</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>高级攻城掠地优化</td>
+            <td>28</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>小额礼包购买</td>
+            <td>27</td>
+            <td style="color: red;">6</td>
+            <td style="color: red;">22.2%</td>
+        </tr>
+        
+        <tr>
+            <td>围剿boss跨服</td>
+            <td>26</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>战装试炼优化</td>
+            <td>24</td>
+            <td style="color: red;">2</td>
+            <td style="color: red;">8.3%</td>
+        </tr>
+        
+        <tr>
+            <td>赛车RPG优化</td>
+            <td>24</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>野战邮件</td>
+            <td>19</td>
+            <td style="color: red;">2</td>
+            <td style="color: red;">10.5%</td>
+        </tr>
+        
+        <tr>
+            <td>机师补充</td>
+            <td>17</td>
+            <td style="color: red;">4</td>
+            <td style="color: red;">23.5%</td>
+        </tr>
+        
+        <tr>
+            <td>收藏品展览筛选</td>
+            <td>16</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>成就勋章优化</td>
+            <td>14</td>
+            <td style="color: red;">2</td>
+            <td style="color: red;">14.3%</td>
+        </tr>
+        
+        <tr>
+            <td>新斗士诺亚</td>
+            <td>14</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>新增雷达礼包</td>
+            <td>12</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>射击手减速</td>
+            <td>10</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>拓荒节节日活动</td>
+            <td>9</td>
+            <td style="color: red;">1</td>
+            <td style="color: red;">11.1%</td>
+        </tr>
+        
+        <tr>
+            <td>战装下沉礼包优化</td>
+            <td>8</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>拓荒节机甲累充</td>
+            <td>8</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>5月节日活动：节日活跃</td>
+            <td>7</td>
+            <td style="color: red;">1</td>
+            <td style="color: red;">14.3%</td>
+        </tr>
+        
+        <tr>
+            <td>拓荒节gacha</td>
+            <td>7</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>拓荒节强消耗</td>
+            <td>7</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>主城位置提示气泡</td>
+            <td>6</td>
+            <td >0</td>
+            <td >0.0%</td>
+        </tr>
+        
+        <tr>
+            <td>吞噬小游戏优化</td>
+            <td>6</td>
+            <td style="color: red;">1</td>
+            <td style="color: red;">16.7%</td>
+        </tr>
+        
+                    </tbody>
+                </table>
+                
+                <div class="chart-wrapper" style="margin-top: 30px;">
+                    <canvas id="functionChart"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="analysis-section">
+            <div class="analysis-header">版本Bug整体分析</div>
+            <div class="analysis-content">
+                <ul>
+                    <li><strong>Bug总数：</strong>1103个，解决率93.8%</li>
+                    <li><strong>主要Bug集中功能：</strong>前5个功能模块占总bug数的45.3%</li>
+                    <li><strong>Bug重开率：</strong>14.5%，高优先级Bug占比9.3%</li>
+                    <li><strong>核心功能点：</strong>识别出30个主要功能模块，其中14个存在高优先级问题</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="analysis-section">
+            <div class="analysis-header">关键问题分析</div>
+            <div class="analysis-content">
+                <ul>
+                    <li><strong>高优先级Bug集中模块：</strong>主要集中在射击卡牌验证, ac练习赛, 连塔验证关卡等功能模块</li>
+                    <li><strong>Bug问题类型分布：</strong>
+                        <table style="margin-top: 10px;">
+                            <thead>
+                                <tr>
+                                    <th>问题类型</th>
+                                    <th>数量</th>
+                                    <th>占比</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                
+        <tr>
+            <td>UI问题</td>
+            <td>627</td>
+            <td>56.9%</td>
+        </tr>
+        
+        <tr>
+            <td>其他问题</td>
+            <td>265</td>
+            <td>24.0%</td>
+        </tr>
+        
+        <tr>
+            <td>代码逻辑问题</td>
+            <td>193</td>
+            <td>17.5%</td>
+        </tr>
+        
+        <tr>
+            <td>配置本地化问题</td>
+            <td>13</td>
+            <td>1.2%</td>
+        </tr>
+        
+        <tr>
+            <td>性能问题</td>
+            <td>4</td>
+            <td>0.4%</td>
+        </tr>
+        
+                            </tbody>
+                        </table>
+                    </li>
+                    <li><strong>关键功能模块缺陷：</strong>识别出14个关键功能存在设计或实现缺陷</li>
+                    <li><strong>系统性问题：</strong>重开率14.5%表明存在一定的系统性问题</li>
+                    <li><strong>用户体验影响：</strong>高优先级Bug占比9.3%对用户体验造成一定影响</li>
+                </ul>
+            </div>
+        </div>
+        
+        <div class="analysis-section">
+            <div class="analysis-header">修复效率分析</div>
+            <div class="analysis-content">
+                <ul>
+                    <li><strong>处理人维度对比：</strong>前30名处理人共处理1052个bug，占总数的95.4%</li>
+                    <li><strong>修复效率分析：</strong>30名处理人效率评价为优秀</li>
+                    <li><strong>重开率分析：</strong>平均重开率15.9%，0名处理人质量评价为优秀</li>
+                   
+                </ul>
+            </div>
+        </div>
+        
+        <div class="analysis-section">
+            <div class="analysis-header">问题原因推测</div>
+            <div class="analysis-content">
+                <ul>
+                    <li>界面交互逻辑复杂，导致UI相关问题频发</li>
+                    <li>数据处理逻辑存在边界条件处理不当</li>
+                    <li>网络通信机制不够稳定，影响用户体验</li>
+                    <li>性能优化不足，导致卡顿和响应慢问题</li>
+                    <li>测试覆盖度不够，遗漏了部分功能场景</li>
+                </ul>
+            </div>
+        </div>
+        
+       
+        </div>
+    </div>
+    
+    <script>
+        // 解决结果分布饼图
+        const resolutionCtx = document.getElementById('resolutionChart').getContext('2d');
+        new Chart(resolutionCtx, {
+            type: 'pie',
+            data: {
+                labels: ["\u5df2\u89e3\u51b3", "\u4e0d\u80fd\u590d\u73b0", "\u975e\u7f3a\u9677", "\u91cd\u590d\u63d0\u4ea4", "\u4e0d\u89e3\u51b3", "\u4e0b\u4e2a\u7248\u672c\u89e3\u51b3"],
+                datasets: [{
+                    data: [1035, 30, 18, 10, 9, 1],
+                    backgroundColor: [
+                        '#3498db',
+                        '#2ecc71',
+                        '#e74c3c',
+                        '#f39c12',
+                        '#9b59b6',
+                        '#1abc9c'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+        
+        // 功能Bug分布柱状图
+        const functionCtx = document.getElementById('functionChart').getContext('2d');
+        new Chart(functionCtx, {
+            type: 'bar',
+            data: {
+                labels: ["\u5c04\u51fb\u5361\u724c\u9a8c\u8bc1", "ac\u7ec3\u4e60\u8d5b", "\u8fde\u5854\u9a8c\u8bc1\u5173\u5361", "\u7b2c\u4e8c\u6218\u8f66", "\u6597\u58eb\u8fdc\u5f81", "\u884c\u519b\u8868\u60c5\u7cfb\u7edf"],
+                datasets: [{
+                    label: 'Bug数量',
+                    data: [177, 114, 86, 64, 59, 43],
+                    backgroundColor: '#3498db',
+                    borderColor: '#2980b9',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+    
