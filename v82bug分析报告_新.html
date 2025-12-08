@@ -1,0 +1,1912 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0.82.0 Bug分析报告</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #667eea;
+            --secondary-color: #4CAF50;
+            --danger-color: #FF5722;
+            --warning-color: #FFC107;
+            --bg-color: #f5f5f5;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #e0e0e0;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 36px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        
+        .header .version-period {
+            font-size: 18px;
+            margin-top: 10px;
+            opacity: 0.95;
+        }
+        
+        .header .date {
+            font-size: 16px;
+            opacity: 0.9;
+            margin-top: 8px;
+        }
+        
+        .stats-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 20px;
+        }
+        
+        .stat-card {
+            background: var(--card-bg);
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+        }
+        
+        .stat-card .label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        
+        .stat-card .value {
+            font-size: 36px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        
+        .stat-card .sub-value {
+            font-size: 20px;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        
+        .section {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .section h2 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+            border-left: 4px solid var(--primary-color);
+            padding-left: 12px;
+        }
+        
+        .section h3 {
+            font-size: 18px;
+            margin: 25px 0 15px 0;
+            color: var(--primary-color);
+        }
+        
+        .chart-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: start;
+        }
+        
+        .chart-box {
+            max-width: 100%;
+        }
+        
+        .chart-canvas {
+            height: 350px !important;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        table thead {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        table th {
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        table td {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 14px;
+        }
+        
+        table tbody tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        table tbody tr:nth-child(even) {
+            background-color: #fafafa;
+        }
+        
+        table tbody tr:nth-child(even):hover {
+            background-color: #f8f9fa;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+        }
+        
+        .highlight-red {
+            color: var(--danger-color) !important;
+            font-weight: bold;
+        }
+        
+        .triple {
+            color: var(--danger-color) !important;
+            font-weight: bold;
+        }
+        
+        .tables-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .table-wrapper {
+            overflow-x: auto;
+        }
+        
+        .analysis-section {
+            background: var(--card-bg);
+            padding: 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .analysis-section h3 {
+            font-size: 20px;
+            margin-bottom: 16px;
+            color: var(--primary-color);
+        }
+        
+        .analysis-section p {
+            margin-bottom: 12px;
+            line-height: 1.8;
+            text-align: justify;
+        }
+        
+        .analysis-section ul {
+            margin-left: 24px;
+            margin-bottom: 16px;
+        }
+        
+        .analysis-section li {
+            margin-bottom: 8px;
+            line-height: 1.8;
+        }
+        
+        @media (max-width: 1024px) {
+            .chart-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .tables-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .gantt-container {
+                grid-template-columns: 1fr !important;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 28px;
+            }
+            
+            .stat-card .value {
+                font-size: 28px;
+            }
+            
+            table {
+                font-size: 12px;
+            }
+            
+            table th, table td {
+                padding: 8px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>0.82.0 Bug分析报告</h1>
+            <div class="version-period">版本周期：10.23 ~ 11.19</div>
+            <div class="date">生成日期：2025年12月08日 15:03</div>
+        </div>
+        
+        <!-- Bug总体概况 -->
+        <div class="stats-container">
+            <div class="stats-row">
+                <div class="stat-card" style="border-top: 4px solid #667eea;">
+                <div class="label">Bug总数</div>
+                    <div class="value" style="color: #667eea;">777</div>
+            </div>
+            
+                <div class="stat-card" style="border-top: 4px solid #4CAF50;">
+                <div class="label">已解决Bug数</div>
+                    <div class="value" style="color: #4CAF50;">739</div>
+                    <div class="sub-value" style="color: #4CAF50;">95.1%</div>
+            </div>
+            
+                <div class="stat-card" style="border-top: 4px solid #FF9800;">
+                <div class="label">平均修复时长</div>
+                    <div class="value" style="color: #FF9800;">1.97</div>
+                    <div class="sub-value" style="color: #FF9800;">天</div>
+            </div>
+            
+                <div class="stat-card" style="border-top: 4px solid #9C27B0;">
+                <div class="label">重新打开Bug数</div>
+                    <div class="value" style="color: #9C27B0;">98</div>
+                    <div class="sub-value" style="color: #9C27B0;">12.6%</div>
+                </div>
+            </div>
+            
+            <div class="stats-row" style="grid-template-columns: repeat(3, 1fr);">
+                <div class="stat-card" style="border-top: 4px solid #F44336;">
+                <div class="label">高优先级Bug</div>
+                    <div class="value" style="color: #F44336;">25</div>
+                    <div class="sub-value" style="color: #F44336;">3.2%</div>
+            </div>
+            
+                <div class="stat-card" style="border-top: 4px solid #00BCD4;">
+                <div class="label">节日Bug数</div>
+                    <div class="value" style="color: #00BCD4;">222</div>
+                    <div class="sub-value" style="color: #00BCD4;">28.6%</div>
+            </div>
+            
+                <div class="stat-card" style="border-top: 4px solid #607D8B;">
+                <div class="label">需求转Bug数</div>
+                    <div class="value" style="color: #607D8B;">56</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Bug解决结果分布 -->
+        <div class="section">
+            <h2>Bug解决结果分布</h2>
+            <div class="chart-container">
+                <div class="chart-box">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>解决结果</th>
+                                <th>数量</th>
+                                <th>占比</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>已解决</td>
+                                <td>739</td>
+                                <td>95.1%</td>
+                            </tr>
+                            <tr>
+                                <td>未解决</td>
+                                <td>12</td>
+                                <td>1.5%</td>
+                            </tr>
+                            <tr>
+                                <td>不解决</td>
+                                <td>9</td>
+                                <td>1.2%</td>
+                            </tr>
+                            <tr>
+                                <td>不能复现</td>
+                                <td>9</td>
+                                <td>1.2%</td>
+                            </tr>
+                            <tr>
+                                <td>非缺陷</td>
+                                <td>5</td>
+                                <td>0.6%</td>
+                            </tr>
+                            <tr>
+                                <td>重复提交</td>
+                                <td>2</td>
+                                <td>0.3%</td>
+                            </tr>
+                            <tr>
+                                <td>下个版本解决</td>
+                                <td>1</td>
+                                <td>0.1%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="chart-box">
+                    <canvas id="resolutionChart" class="chart-canvas"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 按处理人分组的Bug统计 -->
+        <div class="section">
+            <h2>按处理人分组的Bug统计</h2>
+            
+            <div class="tables-grid">
+                <!-- 处理人Bug量排名 -->
+                <div class="table-wrapper">
+                    <h3>处理人Bug量排名（Top 10）</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>处理人</th>
+                            <th>数量</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>1</td>
+                                <td class="">刘德江</td>
+                            <td>98</td>
+                        </tr>
+                        <tr>
+                            <td>2</td>
+                                <td class="triple">林康</td>
+                            <td>81</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                                <td class="triple">莫琪</td>
+                                <td>80</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                                <td class="">王姣</td>
+                                <td>79</td>
+                        </tr>
+                        <tr>
+                            <td>5</td>
+                                <td class="">张治春</td>
+                            <td>66</td>
+                        </tr>
+                        <tr>
+                            <td>6</td>
+                                <td class="">王然</td>
+                            <td>59</td>
+                        </tr>
+                        <tr>
+                            <td>7</td>
+                                <td class="">何超</td>
+                            <td>57</td>
+                        </tr>
+                        <tr>
+                            <td>8</td>
+                                <td class="">方菱葭</td>
+                                <td>57</td>
+                        </tr>
+                        <tr>
+                            <td>9</td>
+                                <td class="triple">李瑞源</td>
+                            <td>27</td>
+                        </tr>
+                        <tr>
+                            <td>10</td>
+                                <td class="triple">刘思毅</td>
+                            <td>22</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 修复效率排名 -->
+                <div class="table-wrapper">
+                    <h3>修复效率排名（Top 10）</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>处理人</th>
+                                <th>时长(天)</th>
+                                <th>评价</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>1</td>
+                                <td class="triple">李瑞源</td>
+                                <td>6.58</td>
+                                <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                            <tr>
+                                <td>2</td>
+                                <td class="">李展博</td>
+                                <td>5.72</td>
+                                <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                            <tr>
+                                <td>3</td>
+                                <td class="">唐嘉俊</td>
+                                <td>5.56</td>
+                                <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                            <tr>
+                                <td>4</td>
+                                <td class="">孙明昊</td>
+                                <td>4.19</td>
+                                <td><span class="badge" style="background-color: #FFC107;">中等</span></td>
+                        </tr>
+                            <tr>
+                                <td>5</td>
+                                <td class="">张婷</td>
+                                <td>4.01</td>
+                                <td><span class="badge" style="background-color: #FFC107;">中等</span></td>
+                        </tr>
+                            <tr>
+                                <td>6</td>
+                                <td class="triple">刘思毅</td>
+                                <td>3.17</td>
+                            <td><span class="badge" style="background-color: #FFC107;">中等</span></td>
+                        </tr>
+                            <tr>
+                                <td>7</td>
+                                <td class="triple">林康</td>
+                                <td>3.07</td>
+                            <td><span class="badge" style="background-color: #FFC107;">中等</span></td>
+                        </tr>
+                            <tr>
+                                <td>8</td>
+                                <td class="triple">莫琪</td>
+                                <td>2.31</td>
+                                <td><span class="badge" style="background-color: #8BC34A;">良好</span></td>
+                            </tr>
+                            <tr>
+                            <td>9</td>
+                                <td class="">何超</td>
+                                <td>2.3</td>
+                            <td><span class="badge" style="background-color: #8BC34A;">良好</span></td>
+                        </tr>
+                            <tr>
+                                <td>10</td>
+                                <td class="">龚亮</td>
+                                <td>2.26</td>
+                                <td><span class="badge" style="background-color: #8BC34A;">良好</span></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 重开率排名 -->
+                <div class="table-wrapper">
+                    <h3>重开率排名（Top 10）</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>处理人</th>
+                                <th>重开率%</th>
+                                <th>评价</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>1</td>
+                                <td class="">张婷</td>
+                                <td>50.0</td>
+                                <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                            <tr>
+                                <td>2</td>
+                                <td class="">李展博</td>
+                                <td>50.0</td>
+                            <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                                <td class="">唐嘉俊</td>
+                                <td>33.3</td>
+                            <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                            <tr>
+                                <td>4</td>
+                                <td class="">李钢</td>
+                                <td>33.3</td>
+                            <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                            <tr>
+                                <td>5</td>
+                                <td class="triple">林康</td>
+                                <td>24.7</td>
+                            <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                            </tr>
+                            <tr>
+                                <td>6</td>
+                                <td class="triple">刘思毅</td>
+                                <td>22.7</td>
+                            <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                            <tr>
+                                <td>7</td>
+                                <td class="triple">李瑞源</td>
+                                <td>22.2</td>
+                                <td><span class="badge" style="background-color: #FF5722;">需改进</span></td>
+                        </tr>
+                            <tr>
+                                <td>8</td>
+                                <td class="triple">莫琪</td>
+                                <td>18.8</td>
+                                <td><span class="badge" style="background-color: #FFC107;">中等</span></td>
+                        </tr>
+                            <tr>
+                                <td>9</td>
+                                <td class="">王子琛</td>
+                                <td>16.7</td>
+                                <td><span class="badge" style="background-color: #FFC107;">中等</span></td>
+                        </tr>
+                            <tr>
+                                <td>10</td>
+                                <td class="">王姣</td>
+                                <td>16.5</td>
+                                <td><span class="badge" style="background-color: #FFC107;">中等</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+                </div>
+            </div>
+            
+            <div style="margin-top: 40px;">
+                <h3>处理人四象限图（Bug数量 vs 重开率）</h3>
+                <canvas id="quadrantChart" style="max-height: 400px;"></canvas>
+            </div>
+        </div>
+        
+        <!-- 高优先级Bug分析 -->
+        <div class="section">
+            <h2>高优先级Bug分析</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>任务处理人</th>
+                        <th>数量</th>
+                        <th>对应功能</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>郭康</td>
+                        <td>4</td>
+                        <td>主城皮肤及装饰物OnDemanding(4)</td>
+                    </tr>
+                    <tr>
+                        <td>张治春</td>
+                        <td>4</td>
+                        <td>MJ8节日活动(3), 未分类(1)</td>
+                    </tr>
+                    <tr>
+                        <td>林康</td>
+                        <td>3</td>
+                        <td>12月节日活动——大富翁(1), 12月节日活动——斗士皮肤抽奖(1), 12月节日活动——鱿鱼游戏进度系统(1)</td>
+                    </tr>
+                    <tr>
+                        <td>刘德江</td>
+                        <td>3</td>
+                        <td>集卡册系统(3)</td>
+                    </tr>
+                    <tr>
+                        <td>莫琪</td>
+                        <td>2</td>
+                        <td>12月节日活动——大富翁(1), MJ8节日活动(1)</td>
+                    </tr>
+                    <tr>
+                        <td>王姣</td>
+                        <td>2</td>
+                        <td>集卡册系统(1), MJ8节日活动(1)</td>
+                    </tr>
+                    <tr>
+                        <td>周垚旭</td>
+                        <td>2</td>
+                        <td>MJ8节日活动(2)</td>
+                    </tr>
+                    <tr>
+                        <td>李瑞源</td>
+                        <td>2</td>
+                        <td>英雄皮肤系统(2)</td>
+                    </tr>
+                    <tr>
+                        <td>何超</td>
+                        <td>1</td>
+                        <td>12月节日活动——手札(1)</td>
+                    </tr>
+                    <tr>
+                        <td>刘思毅</td>
+                        <td>1</td>
+                        <td>12月节日活动——行军表情-付费率(1)</td>
+                    </tr>
+                    <tr>
+                        <td>崔紫航</td>
+                        <td>1</td>
+                        <td>集卡册系统(1)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- 功能Bug分布 -->
+        <div class="section">
+            <h2>功能Bug分布（Top 20）</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>排名</th>
+                        <th>功能</th>
+                        <th>总数</th>
+                        <th>占比</th>
+                        <th>高优先级</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>1</td>
+                        <td>集卡册系统</td>
+                        <td>243</td>
+                        <td>31.3%</td>
+                        <td class="highlight-red">5</td>
+                    </tr>
+                    <tr>
+                        <td>2</td>
+                        <td>MJ8节日活动</td>
+                        <td>170</td>
+                        <td>21.9%</td>
+                        <td class="highlight-red">7</td>
+                    </tr>
+                    <tr>
+                        <td>3</td>
+                        <td>12月节日活动——鱿鱼游戏进度系统</td>
+                        <td>84</td>
+                        <td>10.8%</td>
+                        <td class="highlight-red">1</td>
+                    </tr>
+                    <tr>
+                        <td>4</td>
+                        <td>12月节日活动——斗士皮肤抽奖</td>
+                        <td>77</td>
+                        <td>9.9%</td>
+                        <td class="highlight-red">1</td>
+                    </tr>
+                    <tr>
+                        <td>5</td>
+                        <td>英雄皮肤系统</td>
+                        <td>49</td>
+                        <td>6.3%</td>
+                        <td class="highlight-red">2</td>
+                    </tr>
+                    <tr>
+                        <td>6</td>
+                        <td>12月节日活动——手札</td>
+                        <td>22</td>
+                        <td>2.8%</td>
+                        <td class="highlight-red">1</td>
+                    </tr>
+                    <tr>
+                        <td>7</td>
+                        <td>主城皮肤及装饰物OnDemanding</td>
+                        <td>19</td>
+                        <td>2.4%</td>
+                        <td class="highlight-red">4</td>
+                    </tr>
+                    <tr>
+                        <td>8</td>
+                        <td>行军节表情图鉴设计</td>
+                        <td>18</td>
+                        <td>2.3%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>9</td>
+                        <td>改造猴威胁-增加特权</td>
+                        <td>12</td>
+                        <td>1.5%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>10</td>
+                        <td>12月节日活动——GACHA+配套充值+累计活动</td>
+                        <td>11</td>
+                        <td>1.4%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>11</td>
+                        <td>12月节日活动——大富翁</td>
+                        <td>10</td>
+                        <td>1.3%</td>
+                        <td class="highlight-red">2</td>
+                    </tr>
+                    <tr>
+                        <td>12</td>
+                        <td>新手期礼包优化</td>
+                        <td>9</td>
+                        <td>1.2%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>13</td>
+                        <td>12月节日活动——主城特效累充-个人版</td>
+                        <td>7</td>
+                        <td>0.9%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>14</td>
+                        <td>金刚、猎豹染色触发礼包</td>
+                        <td>6</td>
+                        <td>0.8%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>15</td>
+                        <td>帮派日志中增加地下世界相关，主要是地震机的使用</td>
+                        <td>5</td>
+                        <td>0.6%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>16</td>
+                        <td>12月节日活动——机甲累充</td>
+                        <td>3</td>
+                        <td>0.4%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>17</td>
+                        <td>圣诞节大象皮肤</td>
+                        <td>3</td>
+                        <td>0.4%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>18</td>
+                        <td>12月节日活动——行军表情-付费率</td>
+                        <td>2</td>
+                        <td>0.3%</td>
+                        <td class="highlight-red">1</td>
+                    </tr>
+                    <tr>
+                        <td>19</td>
+                        <td>第7,8代收藏品数值调整</td>
+                        <td>2</td>
+                        <td>0.3%</td>
+                        <td class="">0</td>
+                    </tr>
+                    <tr>
+                        <td>20</td>
+                        <td>押镖完成后自动领取奖励，无需邮件领取</td>
+                        <td>2</td>
+                        <td>0.3%</td>
+                        <td class="">0</td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div style="margin-top: 40px;">
+                <h3 style="margin-bottom: 20px;">Bug数量Top 5功能（按部门分布）</h3>
+                <canvas id="functionChart" style="max-height: 400px;"></canvas>
+            </div>
+        </div>
+        
+        <!-- 功能稳定周期分析 -->
+        <div class="section">
+            <h2>功能稳定周期（Top 5）</h2>
+            <p style="color: #666; font-size: 13px; margin-top: -10px; margin-bottom: 20px;">
+                注：功能稳定周期指Bug从开始创建到最后修复完成的持续时间
+            </p>
+            
+            <div class="gantt-container" style="display: grid; grid-template-columns: 1fr 2fr; gap: 30px; align-items: stretch;">
+                <!-- 左侧：数据表格 -->
+                <div style="display: flex; flex-direction: column;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>排名</th>
+                                <th>功能名称</th>
+                                <th>稳定周期(工作日)</th>
+                    </tr>
+                        </thead>
+                        <tbody>
+                    <tr>
+                        <td>1</td>
+                                <td>集卡册系统</td>
+                                <td>24天</td>
+                    </tr>
+                            <tr>
+                                <td>2</td>
+                                <td>英雄皮肤系统</td>
+                                <td>22天</td>
+                            </tr>
+                            <tr>
+                                <td>3</td>
+                                <td>12月节日活动——鱿鱼游戏进度系统</td>
+                                <td>21天</td>
+                            </tr>
+                            <tr>
+                                <td>4</td>
+                                <td>MJ8节日活动</td>
+                                <td>21天</td>
+                            </tr>
+                            <tr>
+                                <td>5</td>
+                                <td>12月节日活动——斗士皮肤抽奖</td>
+                                <td>17天</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- 右侧：甘特图 -->
+                <div style="position: relative; display: flex; align-items: center;">
+                    <canvas id="ganttChart" style="width: 100%; height: 100%; min-height: 280px;"></canvas>
+                </div>
+            </div>
+        </div>
+        
+        <div class="analysis-section" style="background: #fff3e0;">
+            <h2 style="color: var(--primary-color); border-left: 4px solid var(--primary-color); padding-left: 12px;">重点功能分析：集卡册系统</h2>
+            
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 20px; align-items: start;">
+                <!-- 左侧：功能概况 -->
+                <div style="background: white; padding: 20px; border-radius: 8px;">
+                    <h3>功能概况</h3>
+                    <p><strong>Bug总数</strong>：243个</p>
+                    <p><strong>占版本总Bug数</strong>：31.3%</p>
+                    <p><strong>高优先级Bug</strong>：5个</p>
+                </div>
+                
+                <!-- 右侧：按处理人统计 -->
+                <div style="background: white; padding: 20px; border-radius: 8px;">
+                    <h3>按处理人统计</h3>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>处理人</th>
+                                <th>Bug数</th>
+                                <th>占该功能%</th>
+                                <th>修复超2天的个数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>刘德江</td>
+                                <td>95</td>
+                                <td>39.1%</td>
+                                <td>17</td>
+                            </tr>
+                            <tr>
+                                <td>王然</td>
+                                <td>59</td>
+                                <td>24.3%</td>
+                                <td>6</td>
+                            </tr>
+                            <tr>
+                                <td>方菱葭</td>
+                                <td>55</td>
+                                <td>22.6%</td>
+                                <td>14</td>
+                            </tr>
+                            <tr>
+                                <td>王姣</td>
+                                <td>18</td>
+                                <td>7.4%</td>
+                                <td>4</td>
+                            </tr>
+                            <tr>
+                                <td>崔紫航</td>
+                                <td>14</td>
+                                <td>5.8%</td>
+                                <td>3</td>
+                            </tr>
+                            <tr>
+                                <td>牟科</td>
+                                <td>2</td>
+                                <td>0.8%</td>
+                        <td>1</td>
+                    </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="analysis-section" style="background: #e8f5e9;">
+            <h2 style="color: var(--primary-color); border-left: 4px solid var(--primary-color); padding-left: 12px;">节日Bug问题分析</h2>
+            
+            <div style="background: white; padding: 20px; border-radius: 8px; margin: 15px 0;">
+                <p><strong>节日Bug总数</strong>：222个，占版本总Bug的<strong>28.6%</strong></p>
+            </div>
+            
+            <div style="background: white; padding: 20px; border-radius: 8px; margin: 15px 0;">
+                <h3>节日Bug功能分布</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>功能名称</th>
+                            <th>Bug数量</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                        <td>1</td>
+                            <td>12月节日活动——鱿鱼游戏进度系统</td>
+                            <td>84</td>
+                    </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>12月节日活动——斗士皮肤抽奖</td>
+                            <td>77</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>12月节日活动——手札</td>
+                            <td>22</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>12月节日活动——GACHA+配套充值+累计活动</td>
+                            <td>11</td>
+                        </tr>
+                        <tr>
+                            <td>5</td>
+                            <td>12月节日活动——大富翁</td>
+                            <td>10</td>
+                        </tr>
+                        <tr>
+                            <td>6</td>
+                            <td>12月节日活动——主城特效累充-个人版</td>
+                            <td>7</td>
+                        </tr>
+                        <tr>
+                            <td>7</td>
+                            <td>12月节日活动——机甲累充</td>
+                            <td>3</td>
+                        </tr>
+                        <tr>
+                            <td>8</td>
+                            <td>行军节表情图鉴设计</td>
+                            <td>2</td>
+                        </tr>
+                        <tr>
+                            <td>9</td>
+                            <td>12月节日活动——行军表情-付费率</td>
+                            <td>2</td>
+                        </tr>
+                        <tr>
+                            <td>10</td>
+                            <td>12月节日活动——装饰贬值</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                            <td>11</td>
+                            <td>12月节日活动——BP</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                            <td>12</td>
+                        <td>12月节日活动——挖矿</td>
+                        <td>1</td>
+                    </tr>
+                    <tr>
+                            <td>13</td>
+                        <td>12月节日活动——抢购礼包（贬值外显）</td>
+                        <td>1</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="analysis-section" style="background: #fce4ec;">
+            <h2 style="color: var(--primary-color); border-left: 4px solid var(--primary-color); padding-left: 12px;">需求转Bug问题分析</h2>
+            
+            <div style="background: white; padding: 20px; border-radius: 8px; margin: 15px 0;">
+                <p><strong>需求转Bug总数</strong>：56个</p>
+            </div>
+            
+            <div style="background: white; padding: 20px; border-radius: 8px; margin: 15px 0;">
+                <h3>需求转Bug功能分布</h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>功能名称</th>
+                            <th>Bug数量</th>
+                            <th>平均修复时长(天)</th>
+                            <th>处理人</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                        <td>1</td>
+                            <td>MJ8节日活动</td>
+                            <td>34</td>
+                            <td>1.41</td>
+                            <td>张治春(13), 莫琪(9), 王姣(8), 谭畅(2), 孙明昊(1), 周垚旭(1)</td>
+                    </tr>
+                        <tr>
+                            <td>2</td>
+                            <td>12月节日活动——鱿鱼游戏进度系统</td>
+                            <td>12</td>
+                            <td>2.03</td>
+                            <td>何超(5), 徐琮淦(3), 莫琪(3), 林康(1)</td>
+                        </tr>
+                        <tr>
+                            <td>3</td>
+                            <td>12月节日活动——斗士皮肤抽奖</td>
+                            <td>4</td>
+                            <td>1.81</td>
+                            <td>何超(3), 林康(1)</td>
+                        </tr>
+                        <tr>
+                            <td>4</td>
+                            <td>行军节表情图鉴设计</td>
+                            <td>3</td>
+                            <td>0.82</td>
+                            <td>李阳宏(2), 莫琪(1)</td>
+                        </tr>
+                        <tr>
+                            <td>5</td>
+                            <td>主城皮肤及装饰物OnDemanding</td>
+                            <td>2</td>
+                            <td>0.92</td>
+                            <td>郭康(1), 方菱葭(1)</td>
+                        </tr>
+                        <tr>
+                            <td>6</td>
+                            <td>新手期礼包优化</td>
+                            <td>1</td>
+                            <td>3.30</td>
+                            <td>李阳宏(1)</td>
+                        </tr>
+                </tbody>
+            </table>
+            </div>
+    </div>
+    
+    <script>
+        // 解决结果分布饼图
+        const resolutionCtx = document.getElementById('resolutionChart').getContext('2d');
+        new Chart(resolutionCtx, {
+            type: 'pie',
+            data: {
+                labels: ["已解决", "未解决", "不解决", "不能复现", "非缺陷", "重复提交"],
+                datasets: [{
+                    data: [739, 12, 9, 9, 5, 2],
+                    backgroundColor: [
+                        '#4CAF50',
+                        '#FFC107',
+                        '#FF5722',
+                        '#667eea',
+                        '#9C27B0',
+                        '#00BCD4'
+                    ]
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                    },
+                    title: {
+                        display: true,
+                        text: 'Bug解决结果分布',
+                        font: {
+                            size: 16
+                        }
+                    }
+                }
+            }
+        });
+        
+        // 四象限图（添加分割线）
+        const quadCtx = document.getElementById('quadrantChart').getContext('2d');
+        const avgBugCount = 62.6;
+        const avgReopenRate = 14.5;
+        
+        // 绘制背景四象限
+        const quadPlugin = {
+            id: 'quadBackground',
+            beforeDraw: (chart) => {
+                const ctx = chart.ctx;
+                const chartArea = chart.chartArea;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+                
+                // 计算中心线位置
+                const centerX = xAxis.getPixelForValue(avgBugCount);
+                const centerY = yAxis.getPixelForValue(avgReopenRate);
+                
+                // 绘制背景四象限
+                ctx.save();
+                
+                // 第一象限（右上）- 高Bug数、高重开率 - 红色（最严重，加深）
+                ctx.fillStyle = 'rgba(244, 67, 54, 0.2)';
+                ctx.fillRect(centerX, chartArea.top, chartArea.right - centerX, centerY - chartArea.top);
+                
+                // 第二象限（左上）- 低Bug数、高重开率 - 橙色（需改进，加深）
+                ctx.fillStyle = 'rgba(255, 152, 0, 0.15)';
+                ctx.fillRect(chartArea.left, chartArea.top, centerX - chartArea.left, centerY - chartArea.top);
+                
+                // 第三象限（左下）- 低Bug数、低重开率 - 绿色（优秀区）
+                ctx.fillStyle = 'rgba(76, 175, 80, 0.08)';
+                ctx.fillRect(chartArea.left, centerY, centerX - chartArea.left, chartArea.bottom - centerY);
+                
+                // 第四象限（右下）- 高Bug数、低重开率 - 黄色（高产区）
+                ctx.fillStyle = 'rgba(255, 193, 7, 0.1)';
+                ctx.fillRect(centerX, centerY, chartArea.right - centerX, chartArea.bottom - centerY);
+                
+                // 绘制分割线（加深）
+                ctx.strokeStyle = 'rgba(255, 99, 132, 0.7)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                
+                // 垂直线
+                ctx.beginPath();
+                ctx.moveTo(centerX, chartArea.top);
+                ctx.lineTo(centerX, chartArea.bottom);
+                ctx.stroke();
+                
+                // 水平线
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, centerY);
+                ctx.lineTo(chartArea.right, centerY);
+                ctx.stroke();
+                
+                ctx.restore();
+            }
+        };
+        
+        // 在散点上显示处理人名字
+        const quadLabelPlugin = {
+            id: 'quadLabels',
+            afterDatasetsDraw: (chart) => {
+                const ctx = chart.ctx;
+                const xAxis = chart.scales.x;
+                const yAxis = chart.scales.y;
+                const chartArea = chart.chartArea;
+                
+                ctx.save();
+                ctx.font = 'bold 11px Arial';
+                
+                // 计算所有标签的位置信息
+                const labels = [];
+                chart.data.datasets[0].data.forEach((point, index) => {
+                    const x = xAxis.getPixelForValue(point.x);
+                    const y = yAxis.getPixelForValue(point.y);
+                    const textWidth = ctx.measureText(point.label).width;
+                    const padding = 4;
+                    const boxWidth = textWidth + padding * 2;
+                    const boxHeight = 16;
+                    
+                    // 判断标签放置位置（右侧或左侧）
+                    const offsetX = 12;
+                    let textX = x + offsetX;
+                    let alignToLeft = true;
+                    
+                    // 如果超出右边界，放在左侧
+                    if (textX + boxWidth > chartArea.right - 5) {
+                        textX = x - offsetX - boxWidth;
+                        alignToLeft = false;
+                    }
+                    
+                    labels.push({
+                        point: point,
+                        x: x,
+                        y: y,
+                        textX: textX,
+                        textY: y,
+                        boxWidth: boxWidth,
+                        boxHeight: boxHeight,
+                        padding: padding,
+                        alignToLeft: alignToLeft
+                    });
+                });
+                
+                // 检测并解决重叠（按Y坐标排序）
+                labels.sort((a, b) => a.y - b.y);
+                
+                for (let i = 1; i < labels.length; i++) {
+                    const current = labels[i];
+                    const previous = labels[i - 1];
+                    
+                    // 检测垂直重叠
+                    const minDistance = 20; // 最小垂直间距
+                    if (Math.abs(current.y - previous.y) < minDistance) {
+                        // 检测水平是否接近（X坐标差距小于100px才需要错开）
+                        if (Math.abs(current.x - previous.x) < 100) {
+                            // 向下偏移
+                            current.textY = previous.textY + minDistance;
+                        }
+                    }
+                    
+                    // 确保不超出底部边界
+                    if (current.textY + current.boxHeight / 2 > chartArea.bottom) {
+                        current.textY = chartArea.bottom - current.boxHeight / 2;
+                    }
+                    
+                    // 确保不超出顶部边界
+                    if (current.textY - current.boxHeight / 2 < chartArea.top) {
+                        current.textY = chartArea.top + current.boxHeight / 2;
+                    }
+                }
+                
+                // 绘制所有标签
+                labels.forEach(label => {
+                    const textX = label.textX;
+                    const textY = label.textY;
+                    
+                    // 绘制文字背景（白色半透明）
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+                    ctx.fillRect(textX, textY - label.boxHeight / 2, label.boxWidth, label.boxHeight);
+                    
+                    // 绘制文字边框
+                    ctx.strokeStyle = '#667eea';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(textX, textY - label.boxHeight / 2, label.boxWidth, label.boxHeight);
+                    
+                    // 绘制文字
+                    ctx.fillStyle = '#333';
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(label.point.label, textX + label.padding, textY);
+                });
+                
+                ctx.restore();
+            }
+        };
+        
+        new Chart(quadCtx, {
+            type: 'scatter',
+            data: {
+                datasets: [{
+                    label: '处理人',
+                    data: [{"x": 98, "y": 8.2, "label": "刘德江"}, {"x": 81, "y": 24.7, "label": "林康"}, {"x": 80, "y": 18.8, "label": "莫琪"}, {"x": 79, "y": 16.5, "label": "王姣"}, {"x": 66, "y": 7.6, "label": "张治春"}, {"x": 59, "y": 6.8, "label": "王然"}, {"x": 57, "y": 10.5, "label": "何超"}, {"x": 57, "y": 7.0, "label": "方菱葭"}, {"x": 27, "y": 22.2, "label": "李瑞源"}, {"x": 22, "y": 22.7, "label": "刘思毅"}],
+                    backgroundColor: '#667eea',
+                    borderColor: '#1976D2',
+                    pointRadius: 8,
+                    pointHoverRadius: 10
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const point = context.raw;
+                                return point.label + ': ' + point.x + '个Bug, 重开率' + point.y + '%';
+                            }
+                        }
+                    },
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Bug数量',
+                            font: {
+                                size: 14
+                            }
+                        },
+                        beginAtZero: true
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: '重开率(%)',
+                            font: {
+                                size: 14
+                            }
+                        },
+                        beginAtZero: true
+                    }
+                }
+            },
+            plugins: [quadPlugin, quadLabelPlugin]
+        });
+        
+        // 功能分布堆叠柱状图
+        const funcCtx = document.getElementById('functionChart').getContext('2d');
+        const departmentColors = {
+            '客户端': '#667eea',
+            '服务器': '#4CAF50',
+            '运营策划': '#FF9800',
+            'GUI': '#9C27B0',
+            '美术': '#F44336',
+            '其他': '#9E9E9E'
+        };
+        
+        const allDepts = ['客户端', '服务器', '运营策划', 'GUI', '美术', '其他'];
+        const funcLabels = ["集卡册系统", "MJ8节日活动", "12月节日活动——鱿鱼游戏进度系统", "12月节日活动——斗士皮肤抽奖", "英雄皮肤系统"];
+        const funcDeptData = [{"客户端": 95, "运营策划": 79, "GUI": 55, "服务器": 14}, {"运营策划": 65, "客户端": 59, "GUI": 32, "服务器": 14}, {"客户端": 31, "运营策划": 20, "GUI": 20, "服务器": 13}, {"运营策划": 46, "客户端": 17, "美术": 10, "服务器": 2}, {"客户端": 26, "运营策划": 12, "GUI": 7, "服务器": 3, "美术": 1}];
+        const funcTotals = [243, 170, 84, 77, 49];
+        
+        const datasets = allDepts.map(dept => ({
+            label: dept,
+            data: funcDeptData.map(d => d[dept] || 0),
+            backgroundColor: departmentColors[dept]
+        }));
+        
+        // 自定义插件：在每个部门色块上显示百分比
+        const funcPercentPlugin = {
+            id: 'funcPercent',
+            afterDatasetsDraw: (chart) => {
+                const ctx = chart.ctx;
+                
+                ctx.save();
+                
+                const columnTopY = {}; // 记录每个柱子的顶部Y坐标
+                
+                // 第一遍：绘制大色块的文字
+                chart.data.datasets.forEach((dataset, datasetIndex) => {
+                    const meta = chart.getDatasetMeta(datasetIndex);
+                    if (!meta.hidden) {
+                        meta.data.forEach((bar, index) => {
+                            const value = dataset.data[index];
+                            if (value > 0) {
+                                const total = funcTotals[index];
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                const barHeight = Math.abs(bar.height);
+                                
+                                // 记录每个柱子的最顶部Y坐标
+                                const currentTopY = bar.y - barHeight;
+                                if (!columnTopY[index] || currentTopY < columnTopY[index]) {
+                                    columnTopY[index] = currentTopY;
+                                }
+                                
+                                // 只在大色块上显示百分比
+                                if (barHeight > 30) {
+                                    ctx.font = 'bold 13px Arial';
+                                    ctx.textAlign = 'center';
+                                    ctx.textBaseline = 'middle';
+                                    ctx.fillStyle = '#fff';
+                                    ctx.strokeStyle = '#333';
+                                    ctx.lineWidth = 3;
+                                    
+                                    const text = percentage + '%';
+                                    const x = bar.x;
+                                    const y = bar.y + bar.height / 2;
+                                    
+                                    ctx.strokeText(text, x, y);
+                                    ctx.fillText(text, x, y);
+                                }
+                            }
+                        });
+                    }
+                });
+                
+                // 第二遍：在每个柱子顶部显示总数和总百分比
+                const totalBugs = 777;
+                Object.keys(columnTopY).forEach(columnIndex => {
+                    const topY = columnTopY[columnIndex];
+                    const total = funcTotals[columnIndex];
+                    const totalPercentage = ((total / totalBugs) * 100).toFixed(1);
+                    const barX = chart.getDatasetMeta(0).data[columnIndex].x;
+                    
+                    // 绘制总数文字
+                    ctx.font = 'bold 13px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'bottom';
+                    ctx.fillStyle = '#333';
+                    
+                    const text = total + '个 (' + totalPercentage + '%)';
+                    ctx.fillText(text, barX, topY - 8);
+                });
+                
+                ctx.restore();
+            }
+        };
+        
+        new Chart(funcCtx, {
+            type: 'bar',
+            data: {
+                labels: funcLabels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'top'
+                    },
+                    title: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            footer: function(tooltipItems) {
+                                const dataIndex = tooltipItems[0].dataIndex;
+                                return '总计: ' + funcTotals[dataIndex] + '个Bug';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: true
+                    },
+                    y: {
+                        stacked: true,
+                        beginAtZero: true
+                    }
+                }
+            },
+            plugins: [funcPercentPlugin]
+        });
+        
+        // 功能持续周期甘特图
+        const ganttCtx = document.getElementById('ganttChart').getContext('2d');
+        
+        // 甘特图数据
+        const ganttData = [
+            { function: '集卡册系统', start: '2025-11-04', end: '2025-12-05', duration: 30 },
+            { function: '英雄皮肤系统', start: '2025-11-06', end: '2025-12-05', duration: 29 },
+            { function: 'MJ8节日活动', start: '2025-11-06', end: '2025-12-04', duration: 28 },
+            { function: '12月节日活动——鱿鱼游戏进度系统', start: '2025-11-10', end: '2025-12-08', duration: 27 },
+            { function: '12月节日活动——斗士皮肤抽奖', start: '2025-11-13', end: '2025-12-05', duration: 22 }
+        ];
+        
+        // 转换日期为时间戳
+        const parseDate = (dateStr) => new Date(dateStr).getTime();
+        
+        // 自定义插件：在条形图上绘制功能名称
+        const ganttLabelPlugin = {
+            id: 'ganttLabels',
+            afterDatasetsDraw: (chart) => {
+                const ctx = chart.ctx;
+                const meta = chart.getDatasetMeta(0);
+                
+                ctx.save();
+                ctx.font = 'bold 13px Arial';
+                ctx.textBaseline = 'middle';
+                
+                meta.data.forEach((bar, index) => {
+                    const functionName = ganttData[index].function;
+                    const x = bar.x;
+                    const y = bar.y;
+                    const barWidth = bar.width;
+                    
+                    // 设置文字颜色为白色，更清晰
+                    ctx.fillStyle = '#ffffff';
+                    ctx.textAlign = 'left';
+                    
+                    // 在条形图左侧绘制功能名
+                    const textX = x - barWidth / 2 + 10;
+                    ctx.fillText(functionName, textX, y);
+                });
+                
+                ctx.restore();
+            }
+        };
+        
+        // 自定义插件：标注版本部署时间
+        const deploymentLinePlugin = {
+            id: 'deploymentLine',
+            afterDatasetsDraw: (chart) => {
+                const ctx = chart.ctx;
+                const xAxis = chart.scales.x;
+                const chartArea = chart.chartArea;
+                
+                // 11月20日的时间戳
+                const deploymentDate = parseDate('2025-11-20');
+                const x = xAxis.getPixelForValue(deploymentDate);
+                
+                ctx.save();
+                
+                // 绘制红色垂直线
+                ctx.strokeStyle = 'rgba(244, 67, 54, 0.8)';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.moveTo(x, chartArea.top);
+                ctx.lineTo(x, chartArea.bottom);
+                ctx.stroke();
+                
+                // 绘制顶部标签背景
+                const labelText = '版本部署时间';
+                ctx.font = 'bold 12px Arial';
+                const textWidth = ctx.measureText(labelText).width;
+                const padding = 6;
+                const labelWidth = textWidth + padding * 2;
+                const labelHeight = 24;
+                const labelX = x - labelWidth / 2;
+                const labelY = chartArea.top - labelHeight - 5;
+                
+                // 绘制标签背景（红色）
+                ctx.fillStyle = 'rgba(244, 67, 54, 0.9)';
+                ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
+                
+                // 绘制标签边框
+                ctx.strokeStyle = '#F44336';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(labelX, labelY, labelWidth, labelHeight);
+                
+                // 绘制标签文字
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(labelText, x, labelY + labelHeight / 2);
+                
+                // 绘制日期标签（在底部）
+                const dateText = '11-20';
+                ctx.font = 'bold 11px Arial';
+                const dateTextWidth = ctx.measureText(dateText).width;
+                const datePadding = 4;
+                const dateBoxWidth = dateTextWidth + datePadding * 2;
+                const dateBoxHeight = 18;
+                const dateBoxX = x - dateBoxWidth / 2;
+                const dateBoxY = chartArea.bottom + 5;
+                
+                // 绘制日期背景
+                ctx.fillStyle = 'rgba(244, 67, 54, 0.9)';
+                ctx.fillRect(dateBoxX, dateBoxY, dateBoxWidth, dateBoxHeight);
+                
+                // 绘制日期文字
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(dateText, x, dateBoxY + dateBoxHeight / 2);
+                
+                ctx.restore();
+            }
+        };
+        
+        new Chart(ganttCtx, {
+            type: 'bar',
+            data: {
+                labels: ['功能1', '功能2', '功能3', '功能4', '功能5'],
+                datasets: [{
+                    label: '开发周期',
+                    data: ganttData.map((item, index) => {
+                        const startTime = parseDate(item.start);
+                        const endTime = parseDate(item.end);
+                        return {
+                            x: [startTime, endTime],
+                            y: index
+                        };
+                    }),
+                    backgroundColor: ganttData.map((_, index) => [
+                        'rgba(33, 150, 243, 0.8)',
+                        'rgba(76, 175, 80, 0.8)',
+                        'rgba(255, 152, 0, 0.8)',
+                        'rgba(156, 39, 176, 0.8)',
+                        'rgba(244, 67, 54, 0.8)'
+                    ][index]),
+                    borderColor: ganttData.map((_, index) => [
+                        '#667eea',
+                        '#4CAF50',
+                        '#FF9800',
+                        '#9C27B0',
+                        '#F44336'
+                    ][index]),
+                    borderWidth: 2,
+                    borderRadius: 6,
+                    barPercentage: 0.8
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    title: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const dataIndex = context.dataIndex;
+                                const item = ganttData[dataIndex];
+                                return [
+                                    '功能：' + item.function,
+                                    '开始：' + item.start,
+                                    '结束：' + item.end,
+                                    '持续：' + item.duration + '天'
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'day',
+                            displayFormats: {
+                                day: 'MM-dd'
+                            },
+                            tooltipFormat: 'yyyy-MM-dd'
+                        },
+                        title: {
+                            display: true,
+                            text: '日期',
+                            font: {
+                                size: 13,
+                                weight: 'bold'
+                            }
+                        },
+                        min: parseDate('2025-11-01'),
+                        max: parseDate('2025-12-10'),
+                        grid: {
+                            color: 'rgba(0, 0, 0, 0.05)'
+                        }
+                    },
+                    y: {
+                        display: false
+                    }
+                },
+                layout: {
+                    padding: {
+                        left: 0,
+                        right: 10,
+                        top: 35,
+                        bottom: 30
+                    }
+                }
+            },
+            plugins: [ganttLabelPlugin, deploymentLinePlugin]
+        });
+    </script>
+        
+        <!-- 版本情况总结 -->
+            <div class="section" style="margin-top: 40px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);">
+                <!-- 整体质量评价 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="color: var(--primary-color); margin-bottom: 15px;">🎯 整体质量评价</h3>
+                <p style="line-height: 2; font-size: 15px;">
+                    本版本Bug总量较大（777个），主要原因是包含了多个节日活动功能（占比28.6%）以及重要功能迭代。
+                    <span style="color: #4CAF50; font-weight: bold;">修复进度良好</span>（解决率88.5%），
+                    <span style="color: #FF9800; font-weight: bold;">响应速度较快</span>（平均1.34天），
+                    但<span style="color: #F44336; font-weight: bold;">修复质量仍需提升</span>（重开率13.0%），需要加强测试验证和根因分析。
+                </p>
+            </div>
+            
+            <!-- 核心问题分析 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="color: var(--primary-color); margin-bottom: 15px;">🔥 核心问题分析</h3>
+                <div style="background: #fff3e0; padding: 15px; border-left: 4px solid #FF9800; border-radius: 4px; margin-bottom: 15px;">
+                    <p style="line-height: 1.8; margin: 0;">
+                        <strong style="color: #F44336;">集卡册系统</strong>是本版本最大痛点，占比高达31.3%（243个Bug），持续周期30天，跨越整个版本周期。
+                        建议重点复盘需求设计和技术架构，识别系统性问题。
+                    </p>
+                </div>
+                <div style="background: #e3f2fd; padding: 15px; border-left: 4px solid #667eea; border-radius: 4px;">
+                    <p style="line-height: 1.8; margin: 0;">
+                        <strong style="color: #FF9800;">节日活动功能</strong>（MJ8节日活动、鱿鱼游戏、斗士皮肤）合计占比42.6%，
+                        说明节日活动开发质量不稳定。建议建立节日活动标准化开发流程，提前锁定需求，预留充足测试时间。
+                    </p>
+                </div>
+            </div>
+            
+            <!-- 团队效能分析 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="color: var(--primary-color); margin-bottom: 15px;">👥 团队效能分析</h3>
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-bottom: 15px;">
+                    <div>
+                        <h4 style="color: #4CAF50; margin-bottom: 10px;">🏆 优秀表现</h4>
+                        <ul style="line-height: 1.8; padding-left: 20px;">
+                            <li><strong>王然</strong>：59个Bug，重开率6.8%</li>
+                            <li><strong>方菱葭</strong>：57个Bug，重开率7.0%</li>
+                            <li><strong>张治春</strong>：66个Bug，重开率7.6%</li>
+                        </ul>
+                        <p style="color: #666; font-size: 13px; margin-top: 10px;">✓ 高产低返工，质量优秀</p>
+                    </div>
+                    <div>
+                        <h4 style="color: #FF9800; margin-bottom: 10px;">⚠️ 需要改进</h4>
+                        <ul style="line-height: 1.8; padding-left: 20px;">
+                            <li><strong>林康</strong>：81个Bug，重开率24.7%</li>
+                            <li><strong>李瑞源</strong>：27个Bug，重开率22.2%</li>
+                            <li><strong>刘思毅</strong>：22个Bug，重开率22.7%</li>
+                        </ul>
+                        <p style="color: #666; font-size: 13px; margin-top: 10px;">⚠️ 重开率超过20%，需要加强验证</p>
+                    </div>
+                    <div>
+                        <h4 style="color: #667eea; margin-bottom: 10px;">💪 高产贡献</h4>
+                        <ul style="line-height: 1.8; padding-left: 20px;">
+                            <li><strong>刘德江</strong>：98个Bug，重开率8.2%</li>
+                            <li><strong>莫琪</strong>：80个Bug，重开率18.8%</li>
+                            <li><strong>王姣</strong>：79个Bug，重开率16.5%</li>
+                        </ul>
+                        <p style="color: #666; font-size: 13px; margin-top: 10px;">✓ 产出高，质量可进一步提升</p>
+                    </div>
+                </div>
+                <p style="line-height: 1.8; background: #fff3e0; padding: 15px; border-radius: 4px; border-left: 4px solid #FF9800;">
+                    <strong>建议</strong>：针对重开率超过20%的处理人，建议进行专项培训和代码审查，加强自测和交叉测试。
+                    优秀表现的处理人可分享经验，建立Bug修复最佳实践。
+                </p>
+            </div>
+            
+            <!-- 特殊问题分析 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; margin-bottom: 25px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="color: var(--primary-color); margin-bottom: 15px;">⚡ 特殊问题分析</h3>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;">
+                    <div style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #FF9800;">
+                        <h4 style="color: #FF9800; margin-bottom: 10px;">🎉 节日Bug（222个，28.6%）</h4>
+                        <p style="line-height: 1.8; font-size: 14px;">
+                            节日活动功能Bug占比接近30%，主要集中在：<br>
+                            • MJ8节日活动（34个需求转Bug）<br>
+                            • 鱿鱼游戏进度系统（12个需求转Bug）<br>
+                            • 斗士皮肤抽奖（4个需求转Bug）<br>
+                            <strong>问题</strong>：需求变更频繁，测试时间不足。<br>
+                            <strong>建议</strong>：提前锁定需求，预留足够测试时间。
+                        </p>
+                    </div>
+                    <div style="background: #ffebee; padding: 15px; border-radius: 8px; border-left: 4px solid #F44336;">
+                        <h4 style="color: #F44336; margin-bottom: 10px;">⏰ 功能严重超期（Top5均超期）</h4>
+                        <p style="line-height: 1.8; font-size: 14px;">
+                            Bug最多的Top5功能均超过版本周期（10.23~11.19）：<br>
+                            • 鱿鱼游戏进度系统（超期19天，至12-08）<br>
+                            • 集卡册系统（超期16天，至12-05）<br>
+                            • MJ8节日活动（超期15天，至12-04）<br>
+                            <strong>问题</strong>：功能质量未达标、Bug解决不及时、需求调整频繁。<br>
+                            <strong>建议</strong>：提升开发质量、加快修复响应、严控需求变更。
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 改进建议 -->
+            <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <h3 style="color: var(--primary-color); margin-bottom: 15px;">💡 改进建议</h3>
+                <div style="background: linear-gradient(to right, #e3f2fd, #e8f5e9); padding: 20px; border-radius: 8px;">
+                    <ol style="line-height: 2; font-size: 15px;">
+                        <li><strong>建立功能级质量门禁</strong>：对于Bug数超过100的功能（如集卡册系统），建立专项测试方案和质量评审机制，避免大量Bug涌入。</li>
+                        <li><strong>优化节日活动开发流程</strong>：节日活动Bug占比近30%，建议建立节日活动标准化开发模板，提前锁定需求，预留充足测试时间。</li>
+                        <li><strong>提升修复质量</strong>：13%的Bug重开率偏高，建议加强自测和代码审查，重开超过2次的Bug需要进行根因分析。</li>
+                        <li><strong>关注高风险处理人</strong>：对重开率超过20%的处理人进行专项培训，分享优秀处理人的经验，建立最佳实践。</li>
+                        <li><strong>加强需求管理</strong>：56个需求转Bug说明需求理解或变更管理有改进空间，建议加强需求评审和变更控制。</li>
+                        <li><strong>优化部署策略</strong>：从甘特图可看出，所有主要功能Bug都跨越了11-20部署线，说明部署前测试覆盖不足，建议提前介入测试。</li>
+                    </ol>
+                </div>
+            </div>
+        
+        <!-- 版本评分 -->
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px; border-radius: 12px; color: white; box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3); margin-top: 40px;">
+            <h3 style="color: white; margin-bottom: 20px; font-size: 24px;">📈 版本质量评分</h3>
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-top: 20px;">
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 32px; font-weight: bold; color: #ff6b6b;">45</div>
+                    <div style="font-size: 13px; margin-top: 5px;">版本周期达成度</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">权重25%</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 32px; font-weight: bold; color: #feca57;">62</div>
+                    <div style="font-size: 13px; margin-top: 5px;">Bug总量控制</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">权重20%</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 32px; font-weight: bold; color: #48dbfb;">90</div>
+                    <div style="font-size: 13px; margin-top: 5px;">解决率与修复速度</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">权重20%</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 32px; font-weight: bold; color: #feca57;">74</div>
+                    <div style="font-size: 13px; margin-top: 5px;">修复质量</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">权重20%</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2);">
+                    <div style="font-size: 32px; font-weight: bold; color: #feca57;">72</div>
+                    <div style="font-size: 13px; margin-top: 5px;">特殊问题控制</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">权重15%</div>
+                </div>
+                <div style="background: rgba(255,255,255,0.15); padding: 15px; border-radius: 8px; border: 2px solid #FFD700;">
+                    <div style="font-size: 36px; font-weight: bold; color: #FFD700;">67</div>
+                    <div style="font-size: 14px; margin-top: 5px; font-weight: bold;">综合评分</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">中等（需改进）</div>
+                </div>
+            </div>
+            <div style="margin-top: 25px; padding: 20px; background: rgba(255,255,255,0.1); border-radius: 8px; border-left: 4px solid #FFD700;">
+                <p style="font-size: 16px; line-height: 1.8; margin: 0;">
+                    本版本综合评分<strong style="font-size: 20px; color: #FFD700;">67分</strong>（满分100分），属于<strong>中等（需改进）</strong>水平。
+                    虽然团队修复响应速度快（90分），但版本整体交付严重延期（45分），Bug总量控制不理想（62分），整体质量需要改进。
+                </p>
+            </div>
+            <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
+                <div style="background: rgba(255,107,107,0.2); padding: 12px; border-radius: 6px; border-left: 3px solid #ff6b6b;">
+                    <div style="font-size: 12px; color: rgba(255,255,255,0.9); font-weight: bold;">🔴 最大问题</div>
+                    <div style="font-size: 13px; color: white; margin-top: 5px;">版本周期严重超期</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">Top5功能平均超期16.4天</div>
+                </div>
+                <div style="background: rgba(254,202,87,0.2); padding: 12px; border-radius: 6px; border-left: 3px solid #feca57;">
+                    <div style="font-size: 12px; color: rgba(255,255,255,0.9); font-weight: bold;">🟡 待改进</div>
+                    <div style="font-size: 13px; color: white; margin-top: 5px;">Bug总量偏多</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">777个Bug，27.8个/天</div>
+                </div>
+                <div style="background: rgba(72,219,251,0.2); padding: 12px; border-radius: 6px; border-left: 3px solid #48dbfb;">
+                    <div style="font-size: 12px; color: rgba(255,255,255,0.9); font-weight: bold;">🟢 唯一亮点</div>
+                    <div style="font-size: 13px; color: white; margin-top: 5px;">修复响应优秀</div>
+                    <div style="font-size: 11px; color: rgba(255,255,255,0.7); margin-top: 3px;">95.1%解决率，1.34天响应</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    </div>
+    
+</body>
+</html>
