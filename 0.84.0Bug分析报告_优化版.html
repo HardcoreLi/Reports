@@ -1,0 +1,1184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>0.84.0Bug分析报告（优化版）</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2"></script>
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --primary-color: #667eea;
+            --secondary-color: #764ba2;
+            --success-color: #52c41a;
+            --warning-color: #faad14;
+            --danger-color: #ff4d4f;
+            --info-color: #1890ff;
+            --text-color: #333;
+            --text-light: #666;
+            --bg-color: #f5f7fa;
+            --card-bg: #fff;
+            --border-radius: 12px;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        /* 报告头部 - 更紧凑 */
+        .report-header {
+            text-align: center;
+            padding: 30px 20px;
+            background: var(--primary-gradient);
+            border-radius: var(--border-radius);
+            color: white;
+            margin-bottom: 24px;
+        }
+        
+        .report-header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        
+        .report-header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        /* 卡片样式 */
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--border-radius);
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .card-title .icon {
+            font-size: 20px;
+        }
+        
+        /* ===== 执行摘要 ===== */
+        .executive-summary {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+            padding: 30px;
+            border-radius: var(--border-radius);
+            margin-bottom: 20px;
+        }
+        
+        .summary-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: rgba(255,255,255,0.9);
+        }
+        
+        .summary-headline {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            line-height: 1.4;
+        }
+        
+        .summary-headline .score {
+            color: #ffd700;
+        }
+        
+        .summary-headline .level {
+            color: #faad14;
+        }
+        
+        .summary-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .summary-metric {
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        
+        .summary-metric .value {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        
+        .summary-metric .value.good { color: #52c41a; }
+        .summary-metric .value.warning { color: #faad14; }
+        .summary-metric .value.bad { color: #ff4d4f; }
+        
+        .summary-metric .label {
+            font-size: 13px;
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+        
+        .summary-issues {
+            background: rgba(255, 77, 79, 0.15);
+            border-left: 4px solid #ff4d4f;
+            border-radius: 0 8px 8px 0;
+            padding: 16px 20px;
+        }
+        
+        .summary-issues h4 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: #ff7875;
+        }
+        
+        .summary-issues ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+        
+        .summary-issues li {
+            margin-bottom: 4px;
+        }
+        
+        .summary-issues .name {
+            color: #ffd700;
+            font-weight: 600;
+        }
+        
+        /* ===== 版本质量评分 ===== */
+        .score-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: var(--border-radius);
+            padding: 30px;
+            margin-bottom: 20px;
+        }
+        
+        .score-header {
+            display: flex;
+            align-items: center;
+            gap: 30px;
+            margin-bottom: 24px;
+        }
+        
+        .total-score-box {
+            text-align: center;
+            min-width: 140px;
+        }
+        
+        .total-score {
+            font-size: 64px;
+            font-weight: 700;
+            color: #ffd700;
+            line-height: 1;
+        }
+        
+        .total-score-label {
+            font-size: 14px;
+            opacity: 0.9;
+            margin-top: 8px;
+        }
+        
+        .score-level-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.2);
+            padding: 4px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+        
+        .score-summary-text {
+            flex: 1;
+            font-size: 15px;
+            line-height: 1.8;
+            background: rgba(255,255,255,0.1);
+            padding: 20px;
+            border-radius: 8px;
+        }
+        
+        .score-dimensions {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        
+        .dimension-card {
+            background: rgba(255,255,255,0.15);
+            border-radius: 8px;
+            padding: 16px;
+            text-align: center;
+        }
+        
+        .dimension-score {
+            font-size: 28px;
+            font-weight: 700;
+            color: #ffd700;
+        }
+        
+        .dimension-name {
+            font-size: 12px;
+            margin-top: 6px;
+            opacity: 0.9;
+        }
+        
+        .issue-tags {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+        }
+        
+        .issue-tag {
+            border-radius: 8px;
+            padding: 14px;
+        }
+        
+        .issue-tag.danger {
+            background: linear-gradient(135deg, #ff4d4f 0%, #cf1322 100%);
+        }
+        
+        .issue-tag.warning {
+            background: linear-gradient(135deg, #faad14 0%, #d48806 100%);
+        }
+        
+        .issue-tag.success {
+            background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
+        }
+        
+        .issue-tag .tag-label {
+            font-size: 11px;
+            opacity: 0.9;
+            margin-bottom: 4px;
+        }
+        
+        .issue-tag .tag-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .issue-tag .tag-value {
+            font-size: 12px;
+            opacity: 0.9;
+            margin-top: 4px;
+        }
+        
+        /* ===== 关键问题清单 ===== */
+        .key-issues {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+        }
+        
+        .key-issue-card {
+            background: #fff;
+            border-radius: var(--border-radius);
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid #ff4d4f;
+        }
+        
+        .key-issue-card h3 {
+            font-size: 16px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .key-issue-card h3 .emoji {
+            font-size: 18px;
+        }
+        
+        .issue-list {
+            list-style: none;
+        }
+        
+        .issue-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .issue-item:last-child {
+            border-bottom: none;
+        }
+        
+        .issue-rank {
+            width: 28px;
+            height: 28px;
+            background: #ff4d4f;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            font-weight: 600;
+            margin-right: 12px;
+        }
+        
+        .issue-rank.warning {
+            background: #faad14;
+        }
+        
+        .issue-name {
+            flex: 1;
+            font-weight: 500;
+        }
+        
+        .issue-detail {
+            display: flex;
+            gap: 12px;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .issue-detail .bad {
+            color: #ff4d4f;
+            font-weight: 600;
+        }
+        
+        /* ===== 核心指标卡片 ===== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+        
+        .stat-card {
+            background: var(--primary-gradient);
+            border-radius: var(--border-radius);
+            padding: 20px;
+            color: white;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .stat-sub {
+            font-size: 12px;
+            opacity: 0.8;
+            margin-top: 4px;
+        }
+        
+        /* ===== 可折叠详情 ===== */
+        .collapsible {
+            margin-bottom: 20px;
+        }
+        
+        .collapsible-header {
+            background: #fff;
+            border-radius: var(--border-radius);
+            padding: 16px 24px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: background 0.2s;
+        }
+        
+        .collapsible-header:hover {
+            background: #fafafa;
+        }
+        
+        .collapsible-title {
+            font-size: 16px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .collapsible-arrow {
+            font-size: 12px;
+            color: #999;
+            transition: transform 0.3s;
+        }
+        
+        .collapsible-content {
+            display: none;
+            background: #fff;
+            border-radius: 0 0 var(--border-radius) var(--border-radius);
+            padding: 24px;
+            margin-top: -8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+        
+        .collapsible.open .collapsible-arrow {
+            transform: rotate(180deg);
+        }
+        
+        .collapsible.open .collapsible-content {
+            display: block;
+        }
+        
+        .collapsible.open .collapsible-header {
+            border-radius: var(--border-radius) var(--border-radius) 0 0;
+        }
+        
+        /* 表格样式 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        th {
+            background: #f5f5f5;
+            color: #333;
+            padding: 12px 15px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 14px;
+        }
+        
+        tr:hover {
+            background: #fafafa;
+        }
+        
+        .highlight-red {
+            color: var(--danger-color);
+            font-weight: 600;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        .badge-danger { background: #fff1f0; color: #cf1322; }
+        .badge-warning { background: #fffbe6; color: #d48806; }
+        .badge-success { background: #f6ffed; color: #389e0d; }
+        .badge-info { background: #e6f7ff; color: #096dd9; }
+        
+        /* 三列表格布局 */
+        .three-tables {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        
+        .table-section h4 {
+            font-size: 14px;
+            margin-bottom: 12px;
+            text-align: center;
+            color: #666;
+        }
+        
+        /* 图表容器 */
+        .chart-container {
+            position: relative;
+            height: 280px;
+            margin-top: 20px;
+        }
+        
+        /* 深度分析卡片 */
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 16px;
+        }
+        
+        .analysis-card {
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .analysis-card.risk {
+            background: linear-gradient(135deg, #fff1f0 0%, #ffccc7 100%);
+            border-left: 4px solid #ff4d4f;
+        }
+        
+        .analysis-card.cause {
+            background: linear-gradient(135deg, #fff7e6 0%, #ffe7ba 100%);
+            border-left: 4px solid #faad14;
+        }
+        
+        .analysis-card.suggestion {
+            background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%);
+            border-left: 4px solid #1890ff;
+        }
+        
+        .analysis-card.positive {
+            background: linear-gradient(135deg, #f6ffed 0%, #d9f7be 100%);
+            border-left: 4px solid #52c41a;
+        }
+        
+        .analysis-card h4 {
+            font-size: 14px;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .analysis-card.risk h4 { color: #cf1322; }
+        .analysis-card.cause h4 { color: #d48806; }
+        .analysis-card.suggestion h4 { color: #096dd9; }
+        .analysis-card.positive h4 { color: #389e0d; }
+        
+        .analysis-item {
+            margin-bottom: 12px;
+        }
+        
+        .analysis-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .analysis-item .title {
+            font-weight: 600;
+            font-size: 13px;
+            color: #333;
+        }
+        
+        .analysis-item .desc {
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+            line-height: 1.6;
+        }
+        
+        /* 响应式 */
+        @media (max-width: 1200px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .three-tables { grid-template-columns: 1fr; }
+            .score-dimensions { grid-template-columns: repeat(3, 1fr); }
+        }
+        
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: 1fr; }
+            .key-issues { grid-template-columns: 1fr; }
+            .summary-metrics { grid-template-columns: 1fr; }
+            .issue-tags { grid-template-columns: 1fr; }
+            .analysis-grid { grid-template-columns: 1fr; }
+            .score-header { flex-direction: column; text-align: center; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 报告标题 -->
+        <div class="report-header">
+            <h1>0.84.0 版本Bug分析报告</h1>
+            <p>版本周期：2025.12.22 ~ 2026.1.14 ｜ 生成日期：2026-02-02</p>
+        </div>
+        
+        <!-- ===== 1. 执行摘要（新增） ===== -->
+        <div class="executive-summary">
+            <div class="summary-title">
+                <span>📊</span> 执行摘要
+            </div>
+            <div class="summary-headline">
+                本版本综合质量评分 <span class="score">74分</span>，属于 <span class="level">中等</span> 水平。<br>
+                Bug修复速度快但质量存在隐患，需重点关注修复一次性。
+            </div>
+            
+            <div class="summary-metrics">
+                <div class="summary-metric">
+                    <div class="value bad">385</div>
+                    <div class="label">Bug总数（22.6个/天）</div>
+                </div>
+                <div class="summary-metric">
+                    <div class="value good">93.8%</div>
+                    <div class="label">解决率</div>
+                </div>
+                <div class="summary-metric">
+                    <div class="value warning">17.9%</div>
+                    <div class="label">重开率（基准≤10%）</div>
+                </div>
+            </div>
+            
+            <div class="summary-issues">
+                <h4>⚠️ 需立即关注</h4>
+                <ul>
+                    <li><span class="name">林康</span> 负责77个Bug，重开率32.5%（远超基准），是本版本最大质量风险点</li>
+                    <li><span class="name">推币机单机玩法</span> 贡献99个Bug（占25.7%），功能复杂度需评估</li>
+                    <li>Top3处理人承担了44%的Bug，工作负载严重不均衡</li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- ===== 2. 版本质量评分（上移） ===== -->
+        <div class="score-section">
+            <div class="score-header">
+                <div class="total-score-box">
+                    <div class="total-score">74</div>
+                    <div class="total-score-label">综合评分</div>
+                    <div class="score-level-badge">中等水平</div>
+                </div>
+                <div class="score-summary-text">
+                    虽然团队<strong>修复响应速度快</strong>（81分），但<strong>Bug总量控制不理想</strong>（65分），<strong>修复质量</strong>也存在隐患（65分）。建议下个版本重点加强修复前的方案评审，提升一次修复成功率。
+                </div>
+            </div>
+            
+            <div class="score-dimensions">
+                <div class="dimension-card">
+                    <div class="dimension-score">75</div>
+                    <div class="dimension-name">版本周期达成<br><small style="opacity:0.7">权重25%</small></div>
+                </div>
+                <div class="dimension-card">
+                    <div class="dimension-score">65</div>
+                    <div class="dimension-name">Bug总量控制<br><small style="opacity:0.7">权重20%</small></div>
+                </div>
+                <div class="dimension-card">
+                    <div class="dimension-score">81</div>
+                    <div class="dimension-name">修复速度<br><small style="opacity:0.7">权重20%</small></div>
+                </div>
+                <div class="dimension-card">
+                    <div class="dimension-score">65</div>
+                    <div class="dimension-name">修复质量<br><small style="opacity:0.7">权重20%</small></div>
+                </div>
+                <div class="dimension-card">
+                    <div class="dimension-score">83</div>
+                    <div class="dimension-name">特殊问题控制<br><small style="opacity:0.7">权重15%</small></div>
+                </div>
+            </div>
+            
+            <div class="issue-tags">
+                <div class="issue-tag danger">
+                    <div class="tag-label">🔴 最大问题</div>
+                    <div class="tag-title">Bug总量控制</div>
+                    <div class="tag-value">385个Bug，22.6个/天</div>
+                </div>
+                <div class="issue-tag warning">
+                    <div class="tag-label">🟡 待改进</div>
+                    <div class="tag-title">修复质量</div>
+                    <div class="tag-value">17.9%重开率</div>
+                </div>
+                <div class="issue-tag success">
+                    <div class="tag-label">🟢 唯一亮点</div>
+                    <div class="tag-title">特殊问题控制</div>
+                    <div class="tag-value">高优4.9%，整体可控</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ===== 3. 关键问题清单（新增） ===== -->
+        <div class="key-issues">
+            <div class="key-issue-card">
+                <h3><span class="emoji">👤</span> 需重点关注的人员</h3>
+                <ul class="issue-list">
+                    <li class="issue-item">
+                        <span class="issue-rank">1</span>
+                        <span class="issue-name">林康</span>
+                        <span class="issue-detail">
+                            <span>Bug数 <span class="bad">77</span></span>
+                            <span>重开率 <span class="bad">32.5%</span></span>
+                            <span>修复 5.27天</span>
+                        </span>
+                    </li>
+                    <li class="issue-item">
+                        <span class="issue-rank">2</span>
+                        <span class="issue-name">莫琪</span>
+                        <span class="issue-detail">
+                            <span>Bug数 <span class="bad">59</span></span>
+                            <span>重开率 <span class="bad">22.0%</span></span>
+                            <span>修复 2.66天</span>
+                        </span>
+                    </li>
+                    <li class="issue-item">
+                        <span class="issue-rank warning">3</span>
+                        <span class="issue-name">刘德江</span>
+                        <span class="issue-detail">
+                            <span>Bug数 33</span>
+                            <span>重开率 <span class="bad">15.2%</span></span>
+                            <span>修复 1.25天</span>
+                        </span>
+                    </li>
+                </ul>
+            </div>
+            
+            <div class="key-issue-card">
+                <h3><span class="emoji">📦</span> 需重点关注的功能</h3>
+                <ul class="issue-list">
+                    <li class="issue-item">
+                        <span class="issue-rank">1</span>
+                        <span class="issue-name">推币机单机玩法</span>
+                        <span class="issue-detail">
+                            <span>Bug <span class="bad">99</span></span>
+                            <span>占比 <span class="bad">25.7%</span></span>
+                            <span>高优1</span>
+                        </span>
+                    </li>
+                    <li class="issue-item">
+                        <span class="issue-rank">2</span>
+                        <span class="issue-name">新GACHA+累计活动</span>
+                        <span class="issue-detail">
+                            <span>Bug <span class="bad">58</span></span>
+                            <span>占比 15.1%</span>
+                            <span>高优 <span class="bad">6</span></span>
+                        </span>
+                    </li>
+                    <li class="issue-item">
+                        <span class="issue-rank warning">3</span>
+                        <span class="issue-name">情人节累充排行榜</span>
+                        <span class="issue-detail">
+                            <span>Bug 44</span>
+                            <span>占比 11.4%</span>
+                            <span>高优3</span>
+                        </span>
+                    </li>
+                </ul>
+            </div>
+        </div>
+        
+        <!-- ===== 4. Bug总体概况（精简为4个） ===== -->
+        <div class="card">
+            <h2 class="card-title"><span class="icon">📊</span> Bug总体概况</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-value">385</div>
+                    <div class="stat-label">Bug总数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">93.8%</div>
+                    <div class="stat-label">解决率</div>
+                    <div class="stat-sub">361已解决 / 24未解决</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">2.97天</div>
+                    <div class="stat-label">平均修复时长</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">17.9%</div>
+                    <div class="stat-label">Bug重开率</div>
+                    <div class="stat-sub">69次重开（基准≤10%）</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ===== 5. 深度分析与建议 ===== -->
+        <div class="card">
+            <h2 class="card-title"><span class="icon">💡</span> 深度分析与建议</h2>
+            <div class="analysis-grid">
+                <div class="analysis-card risk">
+                    <h4>⚠️ 风险预警</h4>
+                    <div class="analysis-item">
+                        <div class="title">修复质量风险</div>
+                        <div class="desc">林康、莫琪、刘德江等3人重开率均超15%，存在"修而不彻底"问题</div>
+                    </div>
+                    <div class="analysis-item">
+                        <div class="title">功能集中度风险</div>
+                        <div class="desc">Top3功能占Bug总量的52%，可能意味着架构复杂或需求变更频繁</div>
+                    </div>
+                </div>
+                
+                <div class="analysis-card cause">
+                    <h4>🔍 根因分析</h4>
+                    <div class="analysis-item">
+                        <div class="title">修复效率瓶颈</div>
+                        <div class="desc">81个Bug修复超5天，林康有25个，可能存在技术难点或协作阻塞</div>
+                    </div>
+                    <div class="analysis-item">
+                        <div class="title">重开热点功能</div>
+                        <div class="desc">「推币机单机玩法」Bug重开次数最多（16次），逻辑复杂或边界条件多</div>
+                    </div>
+                </div>
+                
+                <div class="analysis-card suggestion">
+                    <h4>💡 改进建议</h4>
+                    <div class="analysis-item">
+                        <div class="title">加强修复验证</div>
+                        <div class="desc">修复前明确复现步骤，修复后补充回归测试用例，减少重开</div>
+                    </div>
+                    <div class="analysis-item">
+                        <div class="title">均衡工作分配</div>
+                        <div class="desc">Top3处理人承担44%的Bug，建议Review任务分配机制</div>
+                    </div>
+                </div>
+                
+                <div class="analysis-card positive">
+                    <h4>✅ 正向发现</h4>
+                    <div class="analysis-item">
+                        <div class="title">响应速度较快</div>
+                        <div class="desc">平均修复时长2.97天，修复响应速度得分81分，表现良好</div>
+                    </div>
+                    <div class="analysis-item">
+                        <div class="title">高优控制到位</div>
+                        <div class="desc">高优先级Bug仅19个（4.9%），整体风险可控</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ===== 6. 详细数据（可折叠） ===== -->
+        
+        <!-- 处理人详细排名 -->
+        <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                <span class="collapsible-title"><span>👥</span> 处理人详细排名</span>
+                <span class="collapsible-arrow">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <div class="three-tables">
+                    <div class="table-section">
+                        <h4>Bug量排名 Top10</h4>
+                        <table>
+                            <thead><tr><th>排名</th><th>处理人</th><th>数量</th></tr></thead>
+                            <tbody>
+                                <tr><td>1</td><td class="highlight-red">林康</td><td>77</td></tr>
+                                <tr><td>2</td><td class="highlight-red">莫琪</td><td>59</td></tr>
+                                <tr><td>3</td><td>刘德江</td><td>33</td></tr>
+                                <tr><td>4</td><td>龚亮</td><td>25</td></tr>
+                                <tr><td>5</td><td>刘思毅</td><td>23</td></tr>
+                                <tr><td>6</td><td>李阳宏</td><td>23</td></tr>
+                                <tr><td>7</td><td>杨潇</td><td>23</td></tr>
+                                <tr><td>8</td><td>周垚旭</td><td>22</td></tr>
+                                <tr><td>9</td><td>李钢</td><td>20</td></tr>
+                                <tr><td>10</td><td>王姣</td><td>17</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="table-section">
+                        <h4>修复效率排名（慢→快）</h4>
+                        <table>
+                            <thead><tr><th>排名</th><th>处理人</th><th>平均时长</th><th>评价</th></tr></thead>
+                            <tbody>
+                                <tr><td>1</td><td>陈思</td><td>6.58天</td><td><span class="badge badge-danger">后20%</span></td></tr>
+                                <tr><td>2</td><td class="highlight-red">林康</td><td>5.27天</td><td><span class="badge badge-danger">后20%</span></td></tr>
+                                <tr><td>3</td><td>龚亮</td><td>4.46天</td><td><span class="badge badge-warning">中等</span></td></tr>
+                                <tr><td>4</td><td>崔紫航</td><td>3.91天</td><td><span class="badge badge-warning">中等</span></td></tr>
+                                <tr><td>5</td><td>方菱葭</td><td>3.65天</td><td><span class="badge badge-warning">中等</span></td></tr>
+                                <tr><td>6</td><td>王姣</td><td>3.43天</td><td><span class="badge badge-warning">中等</span></td></tr>
+                                <tr><td>7</td><td>李阳宏</td><td>3.29天</td><td><span class="badge badge-warning">中等</span></td></tr>
+                                <tr><td>8</td><td>方佳宁</td><td>2.82天</td><td><span class="badge badge-info">中等</span></td></tr>
+                                <tr><td>9</td><td class="highlight-red">莫琪</td><td>2.66天</td><td><span class="badge badge-info">中等</span></td></tr>
+                                <tr><td>10</td><td>李展博</td><td>2.28天</td><td><span class="badge badge-success">前20%</span></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="table-section">
+                        <h4>重开率排名（Bug≥10）</h4>
+                        <table>
+                            <thead><tr><th>排名</th><th>处理人</th><th>重开率</th><th>评价</th></tr></thead>
+                            <tbody>
+                                <tr><td>1</td><td class="highlight-red">林康</td><td>32.5%</td><td><span class="badge badge-danger">≥15%</span></td></tr>
+                                <tr><td>2</td><td class="highlight-red">莫琪</td><td>22.0%</td><td><span class="badge badge-danger">≥15%</span></td></tr>
+                                <tr><td>3</td><td>刘德江</td><td>15.2%</td><td><span class="badge badge-danger">≥15%</span></td></tr>
+                                <tr><td>4</td><td>李钢</td><td>15.0%</td><td><span class="badge badge-warning">10-15%</span></td></tr>
+                                <tr><td>5</td><td>杨潇</td><td>13.0%</td><td><span class="badge badge-warning">10-15%</span></td></tr>
+                                <tr><td>6</td><td>王姣</td><td>11.8%</td><td><span class="badge badge-warning">10-15%</span></td></tr>
+                                <tr><td>7</td><td>孙明昊</td><td>10.0%</td><td><span class="badge badge-success">≤10%</span></td></tr>
+                                <tr><td>8</td><td>周垚旭</td><td>9.1%</td><td><span class="badge badge-success">≤10%</span></td></tr>
+                                <tr><td>9</td><td>李阳宏</td><td>8.7%</td><td><span class="badge badge-success">≤10%</span></td></tr>
+                                <tr><td>10</td><td>张治春</td><td>7.7%</td><td><span class="badge badge-success">≤10%</span></td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 功能Bug分布 -->
+        <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                <span class="collapsible-title"><span>📦</span> 功能Bug分布 Top10</span>
+                <span class="collapsible-arrow">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <table>
+                    <thead>
+                        <tr><th>排名</th><th>功能名</th><th>Bug数</th><th>占比</th><th>高优先级</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>1</td><td class="highlight-red">推币机单机玩法</td><td>99</td><td>25.7%</td><td>1</td></tr>
+                        <tr><td>2</td><td class="highlight-red">2月节日活动——新GACHA+累计活动（沙滩寻宝）</td><td>58</td><td>15.1%</td><td class="highlight-red">6</td></tr>
+                        <tr><td>3</td><td class="highlight-red">2月节日活动——情人节累充排行榜第二期优化</td><td>44</td><td>11.4%</td><td>3</td></tr>
+                        <tr><td>4</td><td>2月节日活动——组队BP</td><td>41</td><td>10.6%</td><td>1</td></tr>
+                        <tr><td>5</td><td>2月节日活动——小游戏装饰新增节日装饰套装</td><td>36</td><td>9.4%</td><td>2</td></tr>
+                        <tr><td>6</td><td>版本常规bug</td><td>16</td><td>4.2%</td><td>2</td></tr>
+                        <tr><td>7</td><td>前期增加高抽连锁礼包</td><td>15</td><td>3.9%</td><td>1</td></tr>
+                        <tr><td>8</td><td>机甲涂装图鉴</td><td>11</td><td>2.9%</td><td>0</td></tr>
+                        <tr><td>9</td><td>2月节日活动——节日特惠卡</td><td>8</td><td>2.1%</td><td>1</td></tr>
+                        <tr><td>10</td><td>机师可进阶或升级的时候红点提示</td><td>8</td><td>2.1%</td><td>0</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- 功能稳定周期甘特图 -->
+        <div class="collapsible">
+            <div class="collapsible-header" onclick="toggleCollapsible(this)">
+                <span class="collapsible-title"><span>⏱️</span> 功能稳定周期（甘特图）</span>
+                <span class="collapsible-arrow">▼</span>
+            </div>
+            <div class="collapsible-content">
+                <p style="color: #999; margin-bottom: 16px; font-size: 13px;">📍 红色虚线为部署时间（2026-01-13），超期部分会标红显示</p>
+                <div class="chart-container">
+                    <canvas id="ganttChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 折叠功能
+        function toggleCollapsible(header) {
+            const collapsible = header.parentElement;
+            collapsible.classList.toggle('open');
+        }
+        
+        // 甘特图
+        const stabilityData = [
+            {"feature": "推币机单机玩法", "days": 23, "start_date": "2025-12-30", "end_date": "2026-02-02"},
+            {"feature": "2月节日活动——新GACHA+累计活动（沙滩寻宝）", "days": 21, "start_date": "2026-01-04", "end_date": "2026-02-02"},
+            {"feature": "2月节日活动——组队BP", "days": 19, "start_date": "2025-12-29", "end_date": "2026-01-23"},
+            {"feature": "2月节日活动——情人节累充排行榜第二期优化", "days": 18, "start_date": "2026-01-05", "end_date": "2026-01-28"},
+            {"feature": "2月节日活动——小游戏装饰新增节日装饰套装", "days": 16, "start_date": "2026-01-04", "end_date": "2026-01-26"}
+        ];
+        const deployTime = '2026-01-13';
+        
+        const ganttColors = ['#5b8ff9', '#f6839a', '#5ad8a6', '#5d7092', '#f6bd16'];
+        
+        const allStartDates = stabilityData.map(d => new Date(d.start_date)).filter(d => !isNaN(d));
+        const allEndDates = stabilityData.map(d => new Date(d.end_date)).filter(d => !isNaN(d));
+        const minDate = allStartDates.length > 0 ? new Date(Math.min(...allStartDates)) : new Date();
+        const maxDate = allEndDates.length > 0 ? new Date(Math.max(...allEndDates)) : new Date();
+        
+        minDate.setDate(minDate.getDate() - 2);
+        maxDate.setDate(maxDate.getDate() + 2);
+        
+        let deployDate = deployTime ? new Date(deployTime) : null;
+        if (deployDate && isNaN(deployDate)) deployDate = null;
+        
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const ganttOffsets = stabilityData.map(d => {
+            const start = new Date(d.start_date);
+            return Math.round((start - minDate) / msPerDay);
+        });
+        
+        const ganttDurations = stabilityData.map(d => {
+            const start = new Date(d.start_date);
+            const end = new Date(d.end_date);
+            return Math.round((end - start) / msPerDay) + 1;
+        });
+        
+        let deployOffset = deployDate ? Math.round((deployDate - minDate) / msPerDay) : null;
+        
+        const overdueDays = stabilityData.map(d => {
+            if (!deployDate) return 0;
+            const endDate = new Date(d.end_date);
+            return endDate > deployDate ? Math.round((endDate - deployDate) / msPerDay) : 0;
+        });
+        
+        const maxX = Math.round((maxDate - minDate) / msPerDay);
+        
+        function formatDate(date) {
+            return (date.getMonth() + 1).toString().padStart(2, '0') + '-' + date.getDate().toString().padStart(2, '0');
+        }
+        
+        const ganttLabelPlugin = {
+            id: 'ganttLabelPlugin',
+            afterDatasetsDraw: function(chart) {
+                const ctx = chart.ctx;
+                const meta = chart.getDatasetMeta(1);
+                const xScale = chart.scales.x;
+                const chartArea = chart.chartArea;
+                
+                if (deployOffset !== null) {
+                    const deployX = xScale.getPixelForValue(deployOffset);
+                    const labelText = '部署 ' + formatDate(deployDate);
+                    
+                    ctx.save();
+                    ctx.font = 'bold 11px sans-serif';
+                    const textWidth = ctx.measureText(labelText).width;
+                    const padding = 6;
+                    const labelHeight = 20;
+                    const labelY = chartArea.top - 25;
+                    
+                    ctx.fillStyle = '#ff4d4f';
+                    ctx.beginPath();
+                    ctx.roundRect(deployX - textWidth/2 - padding, labelY - labelHeight/2, textWidth + padding * 2, labelHeight, 4);
+                    ctx.fill();
+                    
+                    ctx.fillStyle = '#fff';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(labelText, deployX, labelY);
+                    ctx.restore();
+                }
+                
+                meta.data.forEach((bar, index) => {
+                    const d = stabilityData[index];
+                    const overdue = overdueDays[index];
+                    
+                    const barLeft = bar.base;
+                    const barRight = bar.x;
+                    const barCenter = (barLeft + barRight) / 2;
+                    const y = bar.y;
+                    
+                    let featureName = d.feature;
+                    if (featureName.length > 25) {
+                        featureName = featureName.substring(0, 25) + '...';
+                    }
+                    
+                    ctx.save();
+                    ctx.textBaseline = 'middle';
+                    ctx.font = 'bold 12px sans-serif';
+                    
+                    if (overdue > 0) {
+                        const overdueText = '超期' + overdue + '天';
+                        const featureWidth = ctx.measureText(featureName).width;
+                        const overdueWidth = ctx.measureText(overdueText).width;
+                        const totalWidth = featureWidth + overdueWidth + 20;
+                        const startX = barCenter - totalWidth / 2;
+                        
+                        ctx.textAlign = 'left';
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(featureName, startX, y);
+                        
+                        const labelX = startX + featureWidth + 8;
+                        const labelPadding = 4;
+                        const labelHeight = 16;
+                        ctx.fillStyle = '#ff4d4f';
+                        ctx.beginPath();
+                        ctx.roundRect(labelX - labelPadding, y - labelHeight/2, overdueWidth + labelPadding * 2, labelHeight, 3);
+                        ctx.fill();
+                        
+                        ctx.fillStyle = '#fff';
+                        ctx.font = 'bold 11px sans-serif';
+                        ctx.fillText(overdueText, labelX, y);
+                    } else {
+                        ctx.textAlign = 'center';
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(featureName, barCenter, y);
+                    }
+                    
+                    ctx.restore();
+                });
+            }
+        };
+        
+        new Chart(document.getElementById('ganttChart'), {
+            type: 'bar',
+            data: {
+                labels: stabilityData.map(() => ''),
+                datasets: [
+                    {
+                        label: '开始前',
+                        data: ganttOffsets,
+                        backgroundColor: 'transparent',
+                        borderWidth: 0,
+                        barThickness: 32
+                    },
+                    {
+                        label: '持续周期',
+                        data: ganttDurations,
+                        backgroundColor: stabilityData.map((d, i) => ganttColors[i % ganttColors.length]),
+                        borderRadius: 4,
+                        barThickness: 32
+                    }
+                ]
+            },
+            plugins: [ganttLabelPlugin],
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 35 } },
+                scales: {
+                    x: {
+                        stacked: true,
+                        min: 0,
+                        max: maxX,
+                        title: { display: true, text: '日期' },
+                        ticks: {
+                            callback: function(value) {
+                                const date = new Date(minDate.getTime() + value * msPerDay);
+                                return formatDate(date);
+                            },
+                            maxTicksLimit: 12
+                        },
+                        grid: { color: '#f0f0f0' }
+                    },
+                    y: { stacked: true, display: false }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        filter: function(tooltipItem) { return tooltipItem.datasetIndex === 1; },
+                        callbacks: {
+                            title: function(context) { return stabilityData[context[0].dataIndex].feature; },
+                            label: function(context) {
+                                const d = stabilityData[context.dataIndex];
+                                const overdue = overdueDays[context.dataIndex];
+                                let text = d.start_date + ' ~ ' + d.end_date + ' (共' + d.days + '个工作日)';
+                                if (overdue > 0) text += ' [超期' + overdue + '天]';
+                                return text;
+                            }
+                        }
+                    },
+                    datalabels: { display: false },
+                    annotation: deployOffset !== null ? {
+                        annotations: {
+                            deployLine: {
+                                type: 'line',
+                                xMin: deployOffset,
+                                xMax: deployOffset,
+                                borderColor: '#ff4d4f',
+                                borderWidth: 2,
+                                borderDash: [6, 4]
+                            }
+                        }
+                    } : {}
+                }
+            }
+        });
+    </script>
+</body>
+</html>
